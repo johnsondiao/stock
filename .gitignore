@@ -46,4 +46,4 @@ backend/top5_result.py
 backend/ma_result.json
 backend/run_ma_screen.py
 run_screen.py
-src/
+/src/
