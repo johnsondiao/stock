@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+.pytest_cache/
+.mypy_cache/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Node
+node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data & Logs
+backend/data/*.db
+backend/data/*.db-wal
+backend/data/*.db-shm
+backend/logs/
+backend/cache/
+
+# Temporary/debug scripts
+check_progress.py
+debug_*.py
+download_log.txt
+top5.txt
+backend/check_result.py
+backend/top5_result.py
+backend/ma_result.json
+backend/run_ma_screen.py
+run_screen.py
+src/

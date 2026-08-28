@@ -1,0 +1,95 @@
+"""测试 API 端点"""
+
+import pytest
+from fastapi.testclient import TestClient
+from app.log_config import setup_logging
+from app.database import init_db
+from app.strategy.registry import auto_register
+from app.api.main import create_app
+
+
+@pytest.fixture(scope="module")
+def client():
+    setup_logging()
+    init_db()
+    auto_register()  # 测试环境需手动注册策略
+    app = create_app()
+    return TestClient(app)
+
+
+class TestRootEndpoints:
+    def test_root(self, client):
+        resp = client.get("/")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "name" in data
+        assert data["version"] == "2.0.0"
+
+    def test_health(self, client):
+        resp = client.get("/api/health")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "ok"
+
+
+class TestStrategyEndpoints:
+    def test_list_strategies(self, client):
+        resp = client.get("/api/strategy/list")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "strategies" in data
+        assert len(data["strategies"]) >= 2
+
+    def test_get_strategy(self, client):
+        resp = client.get("/api/strategy/ma_bull")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["name"] == "ma_bull"
+        assert "params_schema" in data
+
+    def test_get_strategy_not_found(self, client):
+        resp = client.get("/api/strategy/nonexistent")
+        assert resp.status_code == 404
+
+    def test_get_strategy_schema(self, client):
+        resp = client.get("/api/strategy/ma_bull/schema")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "params_schema" in data
+        assert "min_above" in data["params_schema"]
+
+
+class TestMarketEndpoints:
+    def test_snapshot_info(self, client):
+        resp = client.get("/api/market/snapshot/info")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "stocks_count" in data
+        assert "is_fresh" in data
+
+
+class TestScreenEndpoints:
+    def test_start_screen_invalid_strategy(self, client):
+        resp = client.post("/api/screen", json={
+            "strategy": "nonexistent",
+            "params": {},
+        })
+        assert resp.status_code == 400
+
+    def test_start_screen_valid(self, client):
+        resp = client.post("/api/screen", json={
+            "strategy": "ma_bull",
+            "params": {"min_above": 4},
+        })
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "task_id" in data
+
+    def test_get_task_not_found(self, client):
+        resp = client.get("/api/screen/nonexistent")
+        assert resp.status_code == 404
+
+    def test_history(self, client):
+        resp = client.get("/api/screen/history")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "tasks" in data
