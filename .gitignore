@@ -30,7 +30,6 @@ frontend/dist/
 Thumbs.db
 
 # Data & Logs
-backend/data/*.db
 backend/data/*.db-wal
 backend/data/*.db-shm
 backend/logs/

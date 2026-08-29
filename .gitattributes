@@ -1,0 +1,2 @@
+# SQLite 数据库文件使用 Git LFS 存储（超过 GitHub 100MB 单文件限制）
+*.db filter=lfs diff=lfs merge=lfs -text
