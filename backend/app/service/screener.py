@@ -141,10 +141,13 @@ def _run_screen_task(task_id: str, strategy_name: str,
         logger.info("[%s] 预筛选后: %d 只候选 (排除 %d 只)",
                     task_id, len(candidates), len(snapshot) - len(candidates))
 
-        # Step 3: 缓存预筛 - 利用已有K线缓存快速排除
-        candidates, cache_skipped = _cache_prefilter(candidates, params)
-        logger.info("[%s] 缓存预筛后: %d 只候选 (缓存排除 %d 只)",
-                    task_id, len(candidates), cache_skipped)
+        # Step 3: 缓存预筛 - 利用已有K线缓存快速排除（仅单周期 MA 策略）
+        if strategy.dual_timeframe:
+            cache_skipped = 0
+        else:
+            candidates, cache_skipped = _cache_prefilter(candidates, params)
+            logger.info("[%s] 缓存预筛后: %d 只候选 (缓存排除 %d 只)",
+                        task_id, len(candidates), cache_skipped)
 
         # Step 4: 并发获取K线 + 策略评估
         total = len(candidates)
@@ -304,15 +307,29 @@ def _process_batch(task_id: str, batch: pd.DataFrame,
             if kline.empty or len(kline) < 170:
                 return None
 
-            eval_result = strategy.evaluate(kline, params)
+            if strategy.dual_timeframe:
+                # 双周期策略: 先过 60 分钟闸门，通过后才拉 5 分钟数据（省请求）
+                gate = strategy.evaluate_gate(kline, params)
+                if not gate.get("passed", False):
+                    return None
+                kline_5min = provider.get_5min_kline(code)
+                if kline_5min.empty:
+                    return None
+                eval_result = strategy.evaluate_entry(kline_5min, gate, params)
+            else:
+                eval_result = strategy.evaluate(kline, params)
+
             signal = eval_result.get("signal", Signal.NEUTRAL)
             score = eval_result.get("score", 0)
             details = eval_result.get("details", {})
 
-            # 只返回满足条件的
+            # 只返回满足条件的（双周期策略依赖 score 阈值）
             min_above = params.get("min_above", 4)
             above_count = details.get("above_count", 0)
-            if above_count < min_above and score < 50:
+            if strategy.dual_timeframe:
+                if score < 55:
+                    return None
+            elif above_count < min_above and score < 50:
                 return None
 
             return {

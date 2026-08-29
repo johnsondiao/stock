@@ -19,6 +19,7 @@ class DataProvider:
     - 实时行情: AKShare（一次请求获取全市场，含市值/PE/PB）→ 缓存到 SQLite
     - 小时K线: 新浪 API → 首次全量缓存，后续增量更新
     - 日K线: 新浪 API (scale=240) → 首次全量缓存，后续增量更新
+    - 5分钟K线: 新浪 API (scale=5) → 双周期金叉策略入场信号用
     """
 
     def __init__(self):
@@ -128,6 +129,41 @@ class DataProvider:
             return cached
 
     # ── 缓存统计 ──────────────────────────────────────────
+
+    def get_5min_kline(self, code: str, min_candles: int = 170) -> pd.DataFrame:
+        """
+        获取5分钟K线数据（带 SQLite 缓存 + 增量更新，双周期金叉策略用）
+        300 根 ≈ 6 个交易日，足够计算 MA144 并检测近期金叉
+        """
+        cached = cache.load_kline(code, "kline_5min")
+
+        if cached.empty or len(cached) < min_candles:
+            logger.debug("5分钟K线全量获取: %s", code)
+            df = self._sina.get_kline(code, period="5", count=settings.kline_max_candles)
+            if not df.empty:
+                cache.save_kline(code, df, "kline_5min")
+            return df
+
+        # 增量更新: 只拉最新 100 根（约 2 个交易日）
+        logger.debug("5分钟K线增量获取: %s (缓存已有 %d 根)", code, len(cached))
+        try:
+            new_data = self._sina.get_kline(code, period="5", count=100)
+            if new_data.empty:
+                return cached
+
+            merged = pd.concat([cached, new_data], ignore_index=True)
+            merged = merged.drop_duplicates(subset=["date"], keep="last")
+            merged = merged.sort_values("date").reset_index(drop=True)
+
+            if len(merged) > settings.kline_max_candles:
+                merged = merged.tail(settings.kline_max_candles).reset_index(drop=True)
+
+            cache.save_kline(code, merged, "kline_5min")
+            return merged
+
+        except Exception as e:
+            logger.warning("5分钟K线增量获取失败 %s: %s, 返回缓存数据", code, e)
+            return cached
 
     def get_cache_stats(self) -> dict:
         """获取缓存统计信息"""

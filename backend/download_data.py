@@ -8,10 +8,10 @@
 - 数据保存到 SQLite 缓存，后续选股直接读缓存
 
 用法:
-    python download_data.py              # 正常增量下载（小时+日K线）
+    python download_data.py              # 正常增量下载（小时+5分钟+日K线）
     python download_data.py --full       # 强制全量重新下载（忽略缓存）
     python download_data.py --hourly-only  # 只下载小时K线
-    python download_data.py --daily-only   # 只下载日K线
+    python download_data.py --daily-only   # 只下载日K线（跳过小时和5分钟）
 """
 
 import sys
@@ -170,7 +170,15 @@ def download(force_full: bool = False, hourly_only: bool = False, daily_only: bo
     else:
         logger.info("[小时K线] 已跳过 (--daily-only)")
 
-    # ── 6. 下载日 K 线 ──
+    # ── 6. 下载 5 分钟 K 线（双周期金叉策略用） ──
+    if not daily_only and not hourly_only:
+        logger.info("")
+        logger.info("-" * 60)
+        _download_phase("5分钟K线", provider.get_5min_kline, codes, force_full)
+    else:
+        logger.info("[5分钟K线] 已跳过")
+
+    # ── 7. 下载日 K 线 ──
     if not hourly_only:
         logger.info("")
         logger.info("-" * 60)

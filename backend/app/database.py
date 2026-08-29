@@ -37,6 +37,18 @@ CREATE TABLE IF NOT EXISTS daily_kline (
     PRIMARY KEY (code, date)
 );
 
+-- 5分钟K线缓存（双周期金叉策略用）
+CREATE TABLE IF NOT EXISTS kline_5min (
+    code       TEXT    NOT NULL,
+    date       TEXT    NOT NULL,
+    open       REAL,
+    high       REAL,
+    low        REAL,
+    close      REAL,
+    volume     REAL,
+    PRIMARY KEY (code, date)
+);
+
 -- 实时行情快照
 CREATE TABLE IF NOT EXISTS realtime_snapshot (
     code        TEXT PRIMARY KEY,
@@ -76,6 +88,7 @@ CREATE TABLE IF NOT EXISTS screen_task (
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_hourly_kline_code ON hourly_kline(code);
 CREATE INDEX IF NOT EXISTS idx_daily_kline_code ON daily_kline(code);
+CREATE INDEX IF NOT EXISTS idx_kline_5min_code ON kline_5min(code);
 CREATE INDEX IF NOT EXISTS idx_screen_task_status ON screen_task(status);
 CREATE INDEX IF NOT EXISTS idx_screen_task_created ON screen_task(created_at);
 """

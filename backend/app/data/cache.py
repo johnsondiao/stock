@@ -71,12 +71,14 @@ def get_cache_stats() -> dict:
     with get_db() as conn:
         hourly_count = conn.execute("SELECT COUNT(DISTINCT code) as cnt FROM hourly_kline").fetchone()["cnt"]
         daily_count = conn.execute("SELECT COUNT(DISTINCT code) as cnt FROM daily_kline").fetchone()["cnt"]
+        min5_count = conn.execute("SELECT COUNT(DISTINCT code) as cnt FROM kline_5min").fetchone()["cnt"]
         snapshot_count = conn.execute("SELECT COUNT(*) as cnt FROM realtime_snapshot").fetchone()["cnt"]
         snapshot_time = conn.execute("SELECT MAX(updated_at) as t FROM realtime_snapshot").fetchone()["t"]
 
     return {
         "hourly_cached_stocks": hourly_count,
         "daily_cached_stocks": daily_count,
+        "5min_cached_stocks": min5_count,
         "snapshot_stocks": snapshot_count,
         "snapshot_updated_at": snapshot_time,
     }

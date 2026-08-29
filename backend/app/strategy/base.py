@@ -57,10 +57,24 @@ class Strategy(ABC):
         }
         """
 
+    @property
+    def dual_timeframe(self) -> bool:
+        """是否双周期策略（需 60 分钟闸门 + 5 分钟入场两阶段评估）"""
+        return False
+
+    def evaluate_gate(self, kline: pd.DataFrame, params: dict) -> dict:
+        """双周期策略第一阶段: 大周期趋势闸门（默认不拦截）"""
+        return {"passed": True, "details": {}}
+
+    def evaluate_entry(self, kline_5min: pd.DataFrame, gate: dict, params: dict) -> dict:
+        """双周期策略第二阶段: 小周期入场信号评估"""
+        raise NotImplementedError
+
     def to_dict(self) -> dict:
         """序列化策略信息"""
         return {
             "name": self.name,
             "description": self.description,
             "params_schema": self.params_schema,
+            "dual_timeframe": self.dual_timeframe,
         }
