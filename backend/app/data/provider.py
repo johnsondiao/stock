@@ -18,7 +18,7 @@ class DataProvider:
     核心设计：
     - 实时行情: AKShare（一次请求获取全市场，含市值/PE/PB）→ 缓存到 SQLite
     - 小时K线: 新浪 API → 首次全量缓存，后续增量更新
-    - 日K线: AKShare → 首次全量缓存，后续增量更新
+    - 日K线: 新浪 API (scale=240) → 首次全量缓存，后续增量更新
     """
 
     def __init__(self):
@@ -93,12 +93,15 @@ class DataProvider:
     # ── 日K线（带缓存 + 增量更新） ───────────────────────
 
     def get_daily_kline(self, code: str, count: int = 300) -> pd.DataFrame:
-        """获取日K线数据（带 SQLite 缓存）"""
+        """
+        获取日K线数据（带 SQLite 缓存）
+        数据源: 新浪 API scale=240（AKShare 限流严重，已弃用）
+        """
         cached = cache.load_kline(code, "daily_kline")
 
         if cached.empty or len(cached) < count * 0.5:
             logger.debug("日K线全量获取: %s", code)
-            df = self._akshare.get_kline(code, period="daily", count=count)
+            df = self._sina.get_kline(code, period="240", count=count)
             if not df.empty:
                 cache.save_kline(code, df, "daily_kline")
             return df
@@ -106,7 +109,7 @@ class DataProvider:
         # 增量更新
         logger.debug("日K线增量获取: %s", code)
         try:
-            new_data = self._akshare.get_kline(code, period="daily", count=30)
+            new_data = self._sina.get_kline(code, period="240", count=30)
             if new_data.empty:
                 return cached
 

@@ -8,8 +8,10 @@
 - 数据保存到 SQLite 缓存，后续选股直接读缓存
 
 用法:
-    python download_data.py              # 正常增量下载
+    python download_data.py              # 正常增量下载（小时+日K线）
     python download_data.py --full       # 强制全量重新下载（忽略缓存）
+    python download_data.py --hourly-only  # 只下载小时K线
+    python download_data.py --daily-only   # 只下载日K线
 """
 
 import sys
@@ -57,7 +59,61 @@ def fmt_time(seconds: float) -> str:
         return f"{h}时{m}分"
 
 
-def download(force_full: bool = False):
+def _download_phase(label: str, fetcher, codes: list[str], force_full: bool) -> dict:
+    """
+    通用下载阶段：遍历代码列表调用 fetcher，返回统计
+    :param label: 阶段名称（如 "小时K线"）
+    :param fetcher: callable(code) -> DataFrame
+    """
+    total = len(codes)
+    downloaded = 0
+    skipped = 0
+    errors = 0
+    start_time = time.time()
+
+    logger.info("[%s] 开始下载...", label)
+
+    try:
+        for i, code in enumerate(codes):
+            try:
+                df = fetcher(code)
+                if df is not None and not df.empty:
+                    downloaded += 1
+                else:
+                    skipped += 1
+            except Exception as e:
+                errors += 1
+                if errors <= 30:
+                    logger.warning("  [ERR] %s: %s", code, e)
+                elif errors == 31:
+                    logger.warning("  (后续错误不再逐条显示)")
+
+            # 进度报告（每 10 只或最后一只）
+            done = i + 1
+            if done % 10 == 0 or done == total:
+                elapsed = time.time() - start_time
+                speed = done / elapsed if elapsed > 0 else 0
+                remaining = (total - done) / speed if speed > 0 else 0
+                logger.info(
+                    "  %s [%d/%d] OK:%d ERR:%d SKIP:%d | 速度 %.1f只/分 | 剩余 ~%s",
+                    label, done, total, downloaded, errors, skipped,
+                    speed * 60, fmt_time(remaining)
+                )
+
+    except KeyboardInterrupt:
+        logger.warning("\n[!] 用户中断 (Ctrl+C)")
+
+    elapsed = time.time() - start_time
+    logger.info("")
+    logger.info("[%s] 下载完成:", label)
+    logger.info("  OK: %d 只", downloaded)
+    logger.info("  SKIP: %d 只", skipped)
+    logger.info("  ERR: %d 只", errors)
+    logger.info("  耗时: %s", fmt_time(elapsed))
+    return {"ok": downloaded, "skip": skipped, "err": errors, "elapsed": elapsed}
+
+
+def download(force_full: bool = False, hourly_only: bool = False, daily_only: bool = False):
     """主下载流程"""
     init_db()
     provider = get_provider()
@@ -88,16 +144,14 @@ def download(force_full: bool = False):
     cached_codes = cache.get_cached_codes("hourly_kline")
 
     if force_full:
-        to_download = codes
-        logger.info("[!] 强制全量模式：将重新下载所有 %d 只股票", len(to_download))
+        logger.info("[!] 强制全量模式：将重新下载所有 %d 只股票", len(codes))
     else:
-        to_download = codes
         already_cached = [c for c in codes if c in cached_codes]
         need_full = [c for c in codes if c not in cached_codes]
         logger.info("  已有缓存: %d 只（增量更新）", len(already_cached))
         logger.info("  需要新下载: %d 只", len(need_full))
 
-    total = len(to_download)
+    total = len(codes)
     if total == 0:
         logger.info("[OK] 没有需要下载的股票")
         return
@@ -106,121 +160,23 @@ def download(force_full: bool = False):
     limiter = get_rate_limiter()
     lim_info = limiter.get_stats()
     logger.info("限流配置: %d 请求/分钟", lim_info["rate_per_minute"])
-    est_total_min = total * 2 / max(lim_info["rate_per_minute"], 1)  # 每只至少1次请求
-    logger.info("预计下载时间: ~%s（%d 只股票）", fmt_time(est_total_min * 60), total)
     logger.info("-" * 60)
 
-    # ── 5. 下载小时 K 线 ──
-    logger.info("[小时K线] 开始下载小时K线数据...")
-    downloaded = 0
-    skipped = 0
-    errors = 0
     start_time = time.time()
 
-    try:
-        for i, code in enumerate(to_download):
-            try:
-                if not force_full:
-                    df = provider.get_hourly_kline(code)
-                else:
-                    # 强制全量: 直接调用底层 get_kline 绕过缓存检查
-                    from app.data.sina import SinaSource
-                    from app.data import cache as _cache
-                    from app.config import settings as _settings
-                    sina = SinaSource()
-                    df = sina.get_kline(code, period="60", count=_settings.kline_max_candles)
-                    if not df.empty:
-                        _cache.save_kline(code, df, "hourly_kline")
-
-                if df is not None and not df.empty:
-                    downloaded += 1
-                else:
-                    skipped += 1
-            except Exception as e:
-                errors += 1
-                if errors <= 30:
-                    logger.warning("  [ERR] %s: %s", code, e)
-                elif errors == 31:
-                    logger.warning("  (后续错误不再逐条显示)")
-
-            # 进度报告（每 10 只或最后一只）
-            done = i + 1
-            if done % 10 == 0 or done == total:
-                elapsed = time.time() - start_time
-                speed = done / elapsed if elapsed > 0 else 0
-                remaining = (total - done) / speed if speed > 0 else 0
-                logger.info(
-                    "  小时K线 [%d/%d] OK:%d ERR:%d SKIP:%d | 速度 %.1f只/分 | 剩余 ~%s",
-                    done, total, downloaded, errors, skipped,
-                    speed * 60, fmt_time(remaining)
-                )
-
-    except KeyboardInterrupt:
-        logger.warning("\n[!] 用户中断 (Ctrl+C)")
-
-    elapsed_h = time.time() - start_time
-    logger.info("")
-    logger.info("[小时K线] 下载完成:")
-    logger.info("  OK: %d 只", downloaded)
-    logger.info("  SKIP: %d 只", skipped)
-    logger.info("  ERR: %d 只", errors)
-    logger.info("  耗时: %s", fmt_time(elapsed_h))
+    # ── 5. 下载小时 K 线 ──
+    if not daily_only:
+        _download_phase("小时K线", provider.get_hourly_kline, codes, force_full)
+    else:
+        logger.info("[小时K线] 已跳过 (--daily-only)")
 
     # ── 6. 下载日 K 线 ──
-    logger.info("")
-    logger.info("-" * 60)
-    logger.info("[日K线] 开始下载日K线数据...")
-    d_downloaded = 0
-    d_skipped = 0
-    d_errors = 0
-    start_d = time.time()
-
-    try:
-        for i, code in enumerate(to_download):
-            try:
-                if not force_full:
-                    df = provider.get_daily_kline(code)
-                else:
-                    from app.data.akshare_source import AKShareSource
-                    from app.data import cache as _cache
-                    from app.config import settings as _settings
-                    ak = AKShareSource()
-                    df = ak.get_kline(code, period="daily", count=300)
-                    if not df.empty:
-                        _cache.save_kline(code, df, "daily_kline")
-
-                if df is not None and not df.empty:
-                    d_downloaded += 1
-                else:
-                    d_skipped += 1
-            except Exception as e:
-                d_errors += 1
-                if d_errors <= 30:
-                    logger.warning("  [ERR] %s: %s", code, e)
-                elif d_errors == 31:
-                    logger.warning("  (后续错误不再逐条显示)")
-
-            done = i + 1
-            if done % 10 == 0 or done == total:
-                elapsed = time.time() - start_d
-                speed = done / elapsed if elapsed > 0 else 0
-                remaining = (total - done) / speed if speed > 0 else 0
-                logger.info(
-                    "  日K线   [%d/%d] OK:%d ERR:%d SKIP:%d | 速度 %.1f只/分 | 剩余 ~%s",
-                    done, total, d_downloaded, d_errors, d_skipped,
-                    speed * 60, fmt_time(remaining)
-                )
-
-    except KeyboardInterrupt:
-        logger.warning("\n[!] 用户中断 (Ctrl+C)")
-
-    elapsed_d = time.time() - start_d
-    logger.info("")
-    logger.info("[日K线] 下载完成:")
-    logger.info("  OK: %d 只", d_downloaded)
-    logger.info("  SKIP: %d 只", d_skipped)
-    logger.info("  ERR: %d 只", d_errors)
-    logger.info("  耗时: %s", fmt_time(elapsed_d))
+    if not hourly_only:
+        logger.info("")
+        logger.info("-" * 60)
+        _download_phase("日K线", provider.get_daily_kline, codes, force_full)
+    else:
+        logger.info("[日K线] 已跳过 (--hourly-only)")
 
     # ── 7. 最终汇总 ──
     final_stats = cache.get_cache_stats()
@@ -239,5 +195,7 @@ def download(force_full: bool = False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="全市场股票数据慢速下载器")
     parser.add_argument("--full", action="store_true", help="强制全量重新下载（忽略缓存）")
+    parser.add_argument("--hourly-only", action="store_true", help="只下载小时K线")
+    parser.add_argument("--daily-only", action="store_true", help="只下载日K线")
     args = parser.parse_args()
-    download(force_full=args.full)
+    download(force_full=args.full, hourly_only=args.hourly_only, daily_only=args.daily_only)

@@ -38,9 +38,11 @@ backend/cache/
 # Temporary/debug scripts
 check_progress.py
 debug_*.py
-download_log.txt
+download_log*.txt
 top5.txt
 backend/check_result.py
+backend/check_*freshness*.py
+backend/check_times.py
 backend/top5_result.py
 backend/ma_result.json
 backend/run_ma_screen.py
