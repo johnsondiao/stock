@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>组合策略选股报告</title>
+<style>
+  @page { size: 96mm 200mm; margin: 6mm 5mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Microsoft YaHei", sans-serif; font-size: 10px; color: #222; }
+  .cover {
+    background: linear-gradient(135deg, #1a2a4a, #2c3e6b);
+    color: #fff; border-radius: 10px; padding: 18px 14px; margin-bottom: 10px;
+  }
+  .cover h1 { font-size: 17px; margin-bottom: 5px; }
+  .cover .sub { font-size: 9.5px; color: #b8c4e0; line-height: 1.6; }
+  .cover .big { font-size: 26px; color: #ffd76e; font-weight: bold; margin: 8px 0 2px; }
+  .cover .big small { font-size: 10px; color: #b8c4e0; font-weight: normal; }
+  h2 {
+    font-size: 12px; color: #1a2a4a; margin: 12px 0 6px;
+    border-left: 4px solid #e8b93c; padding-left: 7px;
+  }
+  .list-table { width: 100%; border-collapse: collapse; font-size: 8.5px; }
+  .list-table th { background: #2c3e6b; color: #fff; padding: 3.5px 3px; text-align: left; font-weight: normal; }
+  .list-table td { border-bottom: 1px solid #dde3ee; padding: 3.5px 3px; }
+  .list-table tr:nth-child(even) td { background: #f5f7fb; }
+  .stock-page { page-break-before: always; }
+  .stock-page:first-of-type { page-break-before: auto; }
+  .stock-head {
+    display: flex; align-items: center; gap: 8px;
+    background: #f5f7fb; border-radius: 8px; padding: 8px 10px; margin-bottom: 6px;
+  }
+  .rank { font-size: 16px; font-weight: bold; color: #e8b93c; }
+  .info { flex: 1; }
+  .name { font-size: 12px; font-weight: bold; color: #1a2a4a; }
+  .meta { font-size: 9px; color: #667; margin-top: 1px; }
+  .score { font-size: 14px; font-weight: bold; padding: 3px 8px; border-radius: 6px; color: #fff; }
+  .score.hot { background: #c0392b; }
+  .score.warm { background: #e67e22; }
+  .score.cool { background: #5d7290; }
+  .tags { margin-bottom: 6px; }
+  .tags span {
+    display: inline-block; background: #eef2f9; border: 1px solid #d5deed;
+    color: #3a5580; border-radius: 4px; padding: 1px 6px; font-size: 8.5px; margin: 1px 2px 1px 0;
+  }
+  .stock-page img { width: 100%; border-radius: 6px; display: block; }
+  .note { font-size: 8.5px; color: #778; margin-top: 8px; line-height: 1.6; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>组合策略选股报告</h1>
+  <div class="sub">60分钟定方向 · 日线确认趋势 · 5分钟定入场（四段漏斗）</div>
+  <div class="big">10 <small>只入选 / 扫描 3046 只</small></div>
+  <div class="sub">数据截至 2026-08-28 收盘 · 报告生成 2026-08-30 19:04:16</div>
+</div>
+
+<h2>入选清单</h2>
+<table class="list-table">
+  <tr><th>#</th><th>代码</th><th>名称</th><th>现价</th><th>分</th><th>60分金叉</th><th>5分金叉</th></tr>
+  <tr><td>1</td><td>600218</td><td>全柴动力</td><td>7.67</td><td><b>75</b></td><td>1根前</td><td>12根前</td></tr><tr><td>2</td><td>000089</td><td>深圳机场</td><td>6.56</td><td><b>62</b></td><td>1根前</td><td>31根前</td></tr><tr><td>3</td><td>000498</td><td>山东路桥</td><td>4.97</td><td><b>62</b></td><td>3根前</td><td>29根前</td></tr><tr><td>4</td><td>000900</td><td>现代投资</td><td>3.71</td><td><b>62</b></td><td>4根前</td><td>31根前</td></tr><tr><td>5</td><td>001227</td><td>兰州银行</td><td>2.15</td><td><b>62</b></td><td>6根前</td><td>34根前</td></tr><tr><td>6</td><td>002996</td><td>顺博合金</td><td>6.35</td><td><b>62</b></td><td>5根前</td><td>31根前</td></tr><tr><td>7</td><td>003012</td><td>东鹏控股</td><td>4.79</td><td><b>62</b></td><td>4根前</td><td>40根前</td></tr><tr><td>8</td><td>003039</td><td>顺控发展</td><td>12.09</td><td><b>62</b></td><td>5根前</td><td>46根前</td></tr><tr><td>9</td><td>600551</td><td>时代出版</td><td>7.50</td><td><b>62</b></td><td>1根前</td><td>46根前</td></tr><tr><td>10</td><td>600939</td><td>重庆建工</td><td>2.64</td><td><b>62</b></td><td>4根前</td><td>41根前</td></tr>
+</table>
+<div class="note">
+  评分含义: 98=双周期新鲜金叉+价格确认 / 90=5分新鲜+价格确认 / 75=仅5分新鲜 / 62=金叉在窗口内但不新鲜。<br>
+  图表说明: 每只股票三张图——日线(趋势确认) → 60分钟(定方向) → 5分钟(定入场)，黄色三角为金叉位置。
+</div>
+
+
+<div class="stock-page">
+  <div class="stock-head">
+    <div class="rank">#1</div>
+    <div class="info">
+      <div class="name">600218 全柴动力</div>
+      <div class="meta">现价 7.67 元 · 涨跌 +1.32%</div>
+    </div>
+    <div class="score warm">75分</div>
+  </div>
+  <div class="tags">
+    <span>60分金叉 1根前</span>
+    <span>5分金叉 12根前</span>
+    <span>60分新鲜</span>
+    <span>5分新鲜</span>
+  </div>
+  <img src="charts/combo01_600218.png" alt="600218">
+</div>
+<div class="stock-page">
+  <div class="stock-head">
+    <div class="rank">#2</div>
+    <div class="info">
+      <div class="name">000089 深圳机场</div>
+      <div class="meta">现价 6.56 元 · 涨跌 +1.08%</div>
+    </div>
+    <div class="score cool">62分</div>
+  </div>
+  <div class="tags">
+    <span>60分金叉 1根前</span>
+    <span>5分金叉 31根前</span>
+    <span>60分新鲜</span>
+    <span>5分较早</span>
+  </div>
+  <img src="charts/combo02_000089.png" alt="000089">
+</div>
+<div class="stock-page">
+  <div class="stock-head">
+    <div class="rank">#3</div>
+    <div class="info">
+      <div class="name">000498 山东路桥</div>
+      <div class="meta">现价 4.97 元 · 涨跌 +0.61%</div>
+    </div>
+    <div class="score cool">62分</div>
+  </div>
+  <div class="tags">
+    <span>60分金叉 3根前</span>
+    <span>5分金叉 29根前</span>
+    <span>60分新鲜</span>
+    <span>5分较早</span>
+  </div>
+  <img src="charts/combo03_000498.png" alt="000498">
+</div>
+<div class="stock-page">
+  <div class="stock-head">
+    <div class="rank">#4</div>
+    <div class="info">
+      <div class="name">000900 现代投资</div>
+      <div class="meta">现价 3.71 元 · 涨跌 -0.80%</div>
+    </div>
+    <div class="score cool">62分</div>
+  </div>
+  <div class="tags">
+    <span>60分金叉 4根前</span>
+    <span>5分金叉 31根前</span>
+    <span>60分新鲜</span>
+    <span>5分较早</span>
+  </div>
+  <img src="charts/combo04_000900.png" alt="000900">
+</div>
+<div class="stock-page">
+  <div class="stock-head">
+    <div class="rank">#5</div>
+    <div class="info">
+      <div class="name">001227 兰州银行</div>
+      <div class="meta">现价 2.15 元 · 涨跌 +0.47%</div>
+    </div>
+    <div class="score cool">62分</div>
+  </div>
+  <div class="tags">
+    <span>60分金叉 6根前</span>
+    <span>5分金叉 34根前</span>
+    <span>60分较早</span>
+    <span>5分较早</span>
+  </div>
+  <img src="charts/combo05_001227.png" alt="001227">
+</div>
+<div class="stock-page">
+  <div class="stock-head">
+    <div class="rank">#6</div>
+    <div class="info">
+      <div class="name">002996 顺博合金</div>
+      <div class="meta">现价 6.35 元 · 涨跌 +1.76%</div>
+    </div>
+    <div class="score cool">62分</div>
+  </div>
+  <div class="tags">
+    <span>60分金叉 5根前</span>
+    <span>5分金叉 31根前</span>
+    <span>60分较早</span>
+    <span>5分较早</span>
+  </div>
+  <img src="charts/combo06_002996.png" alt="002996">
+</div>
+<div class="stock-page">
+  <div class="stock-head">
+    <div class="rank">#7</div>
+    <div class="info">
+      <div class="name">003012 东鹏控股</div>
+      <div class="meta">现价 4.79 元 · 涨跌 +1.70%</div>
+    </div>
+    <div class="score cool">62分</div>
+  </div>
+  <div class="tags">
+    <span>60分金叉 4根前</span>
+    <span>5分金叉 40根前</span>
+    <span>60分新鲜</span>
+    <span>5分较早</span>
+  </div>
+  <img src="charts/combo07_003012.png" alt="003012">
+</div>
+<div class="stock-page">
+  <div class="stock-head">
+    <div class="rank">#8</div>
+    <div class="info">
+      <div class="name">003039 顺控发展</div>
+      <div class="meta">现价 12.09 元 · 涨跌 +1.51%</div>
+    </div>
+    <div class="score cool">62分</div>
+  </div>
+  <div class="tags">
+    <span>60分金叉 5根前</span>
+    <span>5分金叉 46根前</span>
+    <span>60分较早</span>
+    <span>5分较早</span>
+  </div>
+  <img src="charts/combo08_003039.png" alt="003039">
+</div>
+<div class="stock-page">
+  <div class="stock-head">
+    <div class="rank">#9</div>
+    <div class="info">
+      <div class="name">600551 时代出版</div>
+      <div class="meta">现价 7.50 元 · 涨跌 +9.97%</div>
+    </div>
+    <div class="score cool">62分</div>
+  </div>
+  <div class="tags">
+    <span>60分金叉 1根前</span>
+    <span>5分金叉 46根前</span>
+    <span>60分新鲜</span>
+    <span>5分较早</span>
+  </div>
+  <img src="charts/combo09_600551.png" alt="600551">
+</div>
+<div class="stock-page">
+  <div class="stock-head">
+    <div class="rank">#10</div>
+    <div class="info">
+      <div class="name">600939 重庆建工</div>
+      <div class="meta">现价 2.64 元 · 涨跌 +1.15%</div>
+    </div>
+    <div class="score cool">62分</div>
+  </div>
+  <div class="tags">
+    <span>60分金叉 4根前</span>
+    <span>5分金叉 41根前</span>
+    <span>60分新鲜</span>
+    <span>5分较早</span>
+  </div>
+  <img src="charts/combo10_600939.png" alt="600939">
+</div>
+
+</body>
+</html>

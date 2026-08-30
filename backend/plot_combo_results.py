@@ -113,7 +113,7 @@ def plot_stock(i: int, r: dict, out_path: Path):
     hd = hourly.tail(100).reset_index(drop=True)
     md = m5.tail(400).reset_index(drop=True)
 
-    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 10), dpi=110)
+    fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(8, 12), dpi=110)
     fig.patch.set_facecolor("#1E1E2E")
     for ax in (ax1, ax2, ax3):
         style_ax(ax)
@@ -121,7 +121,7 @@ def plot_stock(i: int, r: dict, out_path: Path):
     fig.suptitle(
         f"#{i} {code} {name} | 评分 {score} | "
         f"60分金叉{r.get('hourly_cross_bars_ago')}根前 · 5分金叉{r.get('min_cross_bars_ago')}根前",
-        color="#FFFFFF", fontsize=12, y=0.99,
+        color="#FFFFFF", fontsize=11, y=0.995,
     )
 
     # 日线: 趋势确认
