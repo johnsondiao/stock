@@ -133,13 +133,14 @@ class DataProvider:
     def get_5min_kline(self, code: str, min_candles: int = 170) -> pd.DataFrame:
         """
         获取5分钟K线数据（带 SQLite 缓存 + 增量更新，双周期金叉策略用）
-        300 根 ≈ 6 个交易日，足够计算 MA144 并检测近期金叉
+        上限 600 根 ≈ 12 个交易日，满足 MA288 计算与近期金叉检测
+        :param min_candles: 缓存不足此根数时触发全量拉取（用 MA288 时需传 340+）
         """
         cached = cache.load_kline(code, "kline_5min")
 
         if cached.empty or len(cached) < min_candles:
             logger.debug("5分钟K线全量获取: %s", code)
-            df = self._sina.get_kline(code, period="5", count=settings.kline_max_candles)
+            df = self._sina.get_kline(code, period="5", count=settings.kline_5min_max_candles)
             if not df.empty:
                 cache.save_kline(code, df, "kline_5min")
             return df
@@ -155,8 +156,8 @@ class DataProvider:
             merged = merged.drop_duplicates(subset=["date"], keep="last")
             merged = merged.sort_values("date").reset_index(drop=True)
 
-            if len(merged) > settings.kline_max_candles:
-                merged = merged.tail(settings.kline_max_candles).reset_index(drop=True)
+            if len(merged) > settings.kline_5min_max_candles:
+                merged = merged.tail(settings.kline_5min_max_candles).reset_index(drop=True)
 
             cache.save_kline(code, merged, "kline_5min")
             return merged

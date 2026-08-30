@@ -28,7 +28,8 @@ class Settings(BaseSettings):
 
     # ── 缓存 ──
     snapshot_ttl_seconds: int = 300    # 行情快照缓存有效期（5分钟）
-    kline_max_candles: int = 300       # K线最大缓存根数
+    kline_max_candles: int = 300       # K线最大缓存根数（小时/日）
+    kline_5min_max_candles: int = 600  # 5分钟K线最大缓存根数（满足 MA288 计算）
     kline_incremental_len: int = 30    # 增量更新拉取根数
 
     # ── 日志 ──

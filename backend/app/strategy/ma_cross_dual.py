@@ -1,10 +1,10 @@
-"""双周期均线金叉策略 - 60分钟定方向 + 5分钟定时机
+"""双周期均线金叉策略 - 60分钟定方向 + 5分钟定时机（均线周期可配置）
 
-来源: 双周期共振交易法（期货版参数折半后的股票版）
-- 60分钟: MA12 上穿 MA60 金叉 → 确认大级别趋势转多（闸门）
-- 5分钟:  MA12 上穿 MA144 金叉 → 入场信号
-  (换算原理: 5分钟 x 144根 = 720分钟 = 60分钟 x 12根,
-   即 5分钟MA144 ≈ 60分钟MA12, 短期动能上穿大趋势线)
+来源: 双周期共振交易法，支持两套参数:
+- 期货原版: 60分钟 MA24 金叉 MA60，5分钟 MA12 金叉 MA288
+  (换算: 5分钟 x 288根 = 1440分钟 = 60分钟 x 24根)
+- 股票折半版(默认): 60分钟 MA12 金叉 MA60，5分钟 MA12 金叉 MA144
+  (股票日交易时长是期货的一半，周期折半)
 - 出场: 60分钟趋势破坏(价格跌破均线/均线死叉)时离场
 - 仓位: 开仓后分批止盈, 留底仓跑趋势
 """
@@ -13,11 +13,11 @@ import pandas as pd
 from app.strategy.base import Strategy, Signal
 from app.strategy.indicators import calc_ma
 
-# 股票版固定参数（期货参数折半: 24→12, 288→144）
-HOURLY_FAST = 12    # 60分钟快线
-HOURLY_SLOW = 60    # 60分钟慢线
-MIN_FAST = 12       # 5分钟快线
-MIN_SLOW = 144      # 5分钟慢线 (= 60分钟 MA12 的等价周期)
+# 默认参数: 股票折半版（可通过 params 覆盖为期货版 24/60 + 12/288）
+DEFAULT_HOURLY_FAST = 12
+DEFAULT_HOURLY_SLOW = 60
+DEFAULT_MIN_FAST = 12
+DEFAULT_MIN_SLOW = 144
 
 
 class MACrossDualStrategy(Strategy):
@@ -28,8 +28,8 @@ class MACrossDualStrategy(Strategy):
 
     @property
     def description(self) -> str:
-        return ("双周期均线金叉策略：60分钟 MA12 金叉 MA60 定方向，"
-                "5分钟 MA12 金叉 MA144 定入场时机，大小周期共振开仓")
+        return ("双周期均线金叉策略：60分钟快线金叉慢线定方向，"
+                "5分钟快线金叉长周期线定入场时机，大小周期共振开仓（均线周期可配置）")
 
     @property
     def dual_timeframe(self) -> bool:
@@ -38,6 +38,38 @@ class MACrossDualStrategy(Strategy):
     @property
     def params_schema(self) -> dict:
         return {
+            "hourly_fast": {
+                "type": "integer",
+                "label": "60分钟快线周期",
+                "default": 12,
+                "min": 2,
+                "max": 60,
+                "description": "60分钟快线(股票版12/期货版24)",
+            },
+            "hourly_slow": {
+                "type": "integer",
+                "label": "60分钟慢线周期",
+                "default": 60,
+                "min": 10,
+                "max": 200,
+                "description": "60分钟慢线(默认60)",
+            },
+            "min_fast": {
+                "type": "integer",
+                "label": "5分钟快线周期",
+                "default": 12,
+                "min": 2,
+                "max": 60,
+                "description": "5分钟快线(默认12)",
+            },
+            "min_slow": {
+                "type": "integer",
+                "label": "5分钟慢线周期",
+                "default": 144,
+                "min": 10,
+                "max": 400,
+                "description": "5分钟慢线(股票版144/期货版288，288根=60分钟的24根)",
+            },
             "hourly_lookback": {
                 "type": "integer",
                 "label": "60分钟金叉确认窗口(根)",
@@ -68,15 +100,17 @@ class MACrossDualStrategy(Strategy):
 
     def evaluate_gate(self, kline: pd.DataFrame, params: dict) -> dict:
         """
-        60分钟闸门: 当前 MA12 > MA60，且金叉发生在最近 hourly_lookback 根内
+        60分钟闸门: 当前快线 > 慢线，且金叉发生在最近 hourly_lookback 根内
         """
+        hourly_fast = params.get("hourly_fast", DEFAULT_HOURLY_FAST)
+        hourly_slow = params.get("hourly_slow", DEFAULT_HOURLY_SLOW)
         hourly_lookback = params.get("hourly_lookback", 8)
 
-        if len(kline) < HOURLY_SLOW + 2:
+        if len(kline) < hourly_slow + 2:
             return {"passed": False, "details": {"gate_reason": "数据不足"}}
 
-        df = calc_ma(kline.copy(), periods=[HOURLY_FAST, HOURLY_SLOW])
-        fast_col, slow_col = f"ma{HOURLY_FAST}", f"ma{HOURLY_SLOW}"
+        df = calc_ma(kline.copy(), periods=[hourly_fast, hourly_slow])
+        fast_col, slow_col = f"ma{hourly_fast}", f"ma{hourly_slow}"
 
         latest = df.iloc[-1]
         if pd.isna(latest[fast_col]) or pd.isna(latest[slow_col]):
@@ -103,17 +137,19 @@ class MACrossDualStrategy(Strategy):
 
     def evaluate_entry(self, kline_5min: pd.DataFrame, gate: dict, params: dict) -> dict:
         """
-        5分钟入场: MA12 上穿 MA144 金叉，结合 60 分钟闸门结果给出信号
+        5分钟入场: 快线上穿长周期线金叉，结合 60 分钟闸门结果给出信号
         """
+        min_fast = params.get("min_fast", DEFAULT_MIN_FAST)
+        min_slow = params.get("min_slow", DEFAULT_MIN_SLOW)
         min_lookback = params.get("min_lookback", 48)
         fresh_bars = params.get("fresh_min_bars", 12)
 
-        if len(kline_5min) < MIN_SLOW + 2:
+        if len(kline_5min) < min_slow + 2:
             return {"signal": Signal.NEUTRAL, "score": 0,
                     "details": {"error": "5分钟数据不足", **gate.get("details", {})}}
 
-        df = calc_ma(kline_5min.copy(), periods=[MIN_FAST, MIN_SLOW])
-        fast_col, slow_col = f"ma{MIN_FAST}", f"ma{MIN_SLOW}"
+        df = calc_ma(kline_5min.copy(), periods=[min_fast, min_slow])
+        fast_col, slow_col = f"ma{min_fast}", f"ma{min_slow}"
 
         latest = df.iloc[-1]
         price = float(latest["close"])

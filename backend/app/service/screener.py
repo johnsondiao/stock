@@ -312,7 +312,9 @@ def _process_batch(task_id: str, batch: pd.DataFrame,
                 gate = strategy.evaluate_gate(kline, params)
                 if not gate.get("passed", False):
                     return None
-                kline_5min = provider.get_5min_kline(code)
+                # 5分钟数据需满足慢线周期 + 信号窗口（如 MA288 需 340+ 根）
+                need_5min = params.get("min_slow", 144) + params.get("min_lookback", 48) + 10
+                kline_5min = provider.get_5min_kline(code, min_candles=need_5min)
                 if kline_5min.empty:
                     return None
                 eval_result = strategy.evaluate_entry(kline_5min, gate, params)

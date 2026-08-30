@@ -29,9 +29,10 @@ def save_kline(code: str, df: pd.DataFrame, table: str = "hourly_kline"):
     if df.empty:
         return
 
-    # 截断到最大缓存根数
-    if len(df) > settings.kline_max_candles:
-        df = df.tail(settings.kline_max_candles).reset_index(drop=True)
+    # 截断到最大缓存根数（5分钟表用更大上限，满足 MA288 计算）
+    max_candles = settings.kline_5min_max_candles if table == "kline_5min" else settings.kline_max_candles
+    if len(df) > max_candles:
+        df = df.tail(max_candles).reset_index(drop=True)
 
     with get_db() as conn:
         # 删除该股票的旧数据
