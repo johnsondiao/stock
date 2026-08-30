@@ -5,17 +5,11 @@ import pandas as pd
 import numpy as np
 from app.strategy.base import Signal
 from app.strategy.ma_bull import MABullStrategy
-from app.strategy.macd_cross import MACDCrossStrategy
 
 
 @pytest.fixture
 def ma_strategy():
     return MABullStrategy()
-
-
-@pytest.fixture
-def macd_strategy():
-    return MACDCrossStrategy()
 
 
 @pytest.fixture
@@ -95,22 +89,3 @@ class TestMABullStrategy:
         assert "name" in d
         assert "description" in d
         assert "params_schema" in d
-
-
-class TestMACDCrossStrategy:
-    def test_name(self, macd_strategy):
-        assert macd_strategy.name == "macd_cross"
-
-    def test_evaluate_returns_signal(self, macd_strategy, bullish_kline):
-        result = macd_strategy.evaluate(bullish_kline, {})
-        assert "signal" in result
-        assert "score" in result
-        assert "details" in result
-
-    def test_golden_cross_details(self, macd_strategy, bullish_kline):
-        result = macd_strategy.evaluate(bullish_kline, {})
-        details = result["details"]
-        assert "dif" in details
-        assert "dea" in details
-        assert "golden_cross" in details
-        assert "death_cross" in details

@@ -32,9 +32,7 @@ def get_names() -> list[str]:
 def auto_register():
     """自动注册所有内置策略"""
     from app.strategy.ma_bull import MABullStrategy
-    from app.strategy.macd_cross import MACDCrossStrategy
     from app.strategy.ma_cross_dual import MACrossDualStrategy
 
     register(MABullStrategy())
-    register(MACDCrossStrategy())
     register(MACrossDualStrategy())
