@@ -56,25 +56,20 @@ export interface ScreenResult {
   above_count?: number
   total_ma?: number
   ma_aligned?: boolean
-  fresh_candles?: number
-  ma_details?: MADetail[]
+  hourly_cross_bars_ago?: number | null
+  min_cross_bars_ago?: number | null
+  hourly_fresh?: boolean
+  min_fresh?: boolean
   [key: string]: unknown
 }
 
-export interface MADetail {
-  period: number
-  value: number | null
-  price_above: boolean
-  deviation: number | null
-}
-
 export interface ScreenResultData {
+  task_id: string
   strategy: string
   params: Record<string, unknown>
   total_scanned: number
   matched_count: number
   errors: number
-  cache_skipped: number
   results: ScreenResult[]
   completed_at: string
 }
@@ -99,19 +94,13 @@ export async function fetchStrategySchema(name: string): Promise<StrategyInfo> {
   return res.data
 }
 
-/** 启动选股任务 */
-export async function startScreen(req: ScreenRequest): Promise<{ task_id: string }> {
-  const res = await api.post<{ task_id: string }>('/screen', req)
+/** 同步执行选股（数据已在缓存，通常几十秒内返回完整结果） */
+export async function startScreen(req: ScreenRequest): Promise<ScreenResultData> {
+  const res = await api.post<ScreenResultData>('/screen', req, { timeout: 900000 })
   return res.data
 }
 
-/** 查询任务状态 */
-export async function fetchTaskStatus(taskId: string): Promise<TaskStatus> {
-  const res = await api.get<TaskStatus>(`/screen/${taskId}`)
-  return res.data
-}
-
-/** 获取选股结果 */
+/** 获取历史选股结果 */
 export async function fetchTaskResult(taskId: string): Promise<ScreenResultData> {
   const res = await api.get<ScreenResultData>(`/screen/${taskId}/result`)
   return res.data

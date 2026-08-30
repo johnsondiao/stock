@@ -3,24 +3,21 @@ import { useScreenStore } from '../stores/screenStore'
 import { StrategySelector } from '../components/screen/StrategySelector'
 import { ParamForm } from '../components/screen/ParamForm'
 import { PrefilterForm } from '../components/screen/PrefilterForm'
-import { ProgressBar } from '../components/screen/ProgressBar'
 import { ResultTable } from '../components/screen/ResultTable'
 
 export default function Screener() {
-  const { status, loadStrategies } = useScreenStore()
+  const { status, errorMsg, loadStrategies } = useScreenStore()
 
   useEffect(() => {
     loadStrategies()
   }, [loadStrategies])
-
-  const isRunning = status === 'pending' || status === 'running'
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-gradient-to-r from-slate-900 to-slate-800 text-white px-8 py-5 shadow-lg">
         <h1 className="text-xl font-semibold">A 股选股系统</h1>
-        <p className="text-xs text-slate-400 mt-1">策略插件化 · SQLite 缓存 · 增量更新</p>
+        <p className="text-xs text-slate-400 mt-1">后台自动保鲜数据 · 前台按需选股 · SQLite 缓存</p>
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-6 space-y-5">
@@ -31,13 +28,18 @@ export default function Screener() {
           <PrefilterForm />
         </div>
 
-        {/* 进度条 */}
-        {isRunning && <ProgressBar />}
+        {/* 同步执行中: 加载动画 */}
+        {status === 'running' && (
+          <div className="bg-white rounded-xl shadow-sm p-10 text-center">
+            <div className="inline-block w-8 h-8 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
+            <p className="mt-4 text-sm text-gray-500">正在从缓存扫描全市场，请稍候（通常几十秒）...</p>
+          </div>
+        )}
 
         {/* 错误提示 */}
         {status === 'failed' && (
           <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm">
-            选股任务执行失败，请检查后端服务是否正常运行。
+            选股执行失败：{errorMsg || '请检查后端服务是否正常运行'}
           </div>
         )}
 

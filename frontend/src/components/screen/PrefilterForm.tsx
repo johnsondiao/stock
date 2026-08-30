@@ -2,7 +2,7 @@ import { useScreenStore } from '../../stores/screenStore'
 
 export function PrefilterForm() {
   const { prefilter, setPrefilter, runScreen, status } = useScreenStore()
-  const isRunning = status === 'pending' || status === 'running'
+  const isRunning = status === 'running'
 
   const update = (key: string, value: unknown) => {
     setPrefilter({ ...prefilter, [key]: value })

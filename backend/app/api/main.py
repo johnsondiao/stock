@@ -23,10 +23,15 @@ async def lifespan(app: FastAPI):
     init_db()
     auto_register()
 
+    # 启动后台数据更新服务（开盘时段自动保持数据新鲜）
+    from app.service import data_updater
+    data_updater.start()
+
     logger.info("系统就绪: http://%s:%s", settings.host, settings.port)
     yield
 
     # 关闭
+    data_updater.stop()
     close_db()
     logger.info("系统已关闭")
 

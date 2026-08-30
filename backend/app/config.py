@@ -17,11 +17,11 @@ class Settings(BaseSettings):
     # ── 数据库 ──
     db_path: Path = BASE_DIR / "data" / "stock.db"
 
-    # ── 扫描参数 ──
-    scan_max_workers: int = 2          # 并发线程数（降低避免触发源站封禁）
-    scan_batch_size: int = 50         # 每批处理数量
-    scan_batch_pause: float = 10.0    # 批次间隔秒数
-    scan_submit_interval: float = 0.3 # 并发任务提交间隔
+    # ── 扫描参数（缓存命中时走快车道；API 请求由全局限流器兜底） ──
+    scan_max_workers: int = 8         # 并发线程数（读缓存为主，可较高）
+    scan_batch_size: int = 200        # 每批处理数量
+    scan_batch_pause: float = 2.0     # 批次间隔（仅当批次有缓存未命中需拉API时生效）
+    scan_submit_interval: float = 0.0  # 并发任务提交间隔（API请求已由全局限流器控制，无需额外间隔）
     
     # ── 限流 ──
     rate_limit_per_minute: int = 30   # 每分钟最大 API 请求数（新浪 VIP 端点建议更保守）

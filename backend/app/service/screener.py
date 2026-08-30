@@ -1,10 +1,14 @@
-"""选股服务 - 后台任务 + 进度追踪 + 并发扫描"""
+"""选股服务 - 同步按需执行（前台触发, 只读缓存）
+
+架构约定:
+- 数据新鲜度由后台数据更新服务 (data_updater) 保证
+- 选股在前台按需执行: POST /api/screen 同步跑完直接返回结果
+- 不再使用后台线程 + 轮询
+"""
 
 import json
 import uuid
-import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
 
 import pandas as pd
 
@@ -17,64 +21,109 @@ from app.log_config import get_logger
 
 logger = get_logger(__name__)
 
-# 内存中的任务进度（实时，供轮询用）
-_task_progress: dict[str, dict] = {}
-_lock = threading.Lock()
 
-
-def start_screen(strategy_name: str, params: dict,
-                 prefilter: dict | None = None) -> str:
+def run_screen(strategy_name: str, params: dict,
+               prefilter: dict | None = None) -> dict:
     """
-    启动选股任务（异步）
+    同步执行选股并返回完整结果
 
     :param strategy_name: 策略名称
     :param params: 策略参数
-    :param prefilter: 预筛条件 {min_price, max_price, min_market_cap, exclude_st}
-    :return: task_id
+    :param prefilter: 预筛条件 {min_price, max_price, exclude_st}
+    :return: {task_id, total_scanned, matched_count, results, ...}
     """
     strategy = strategy_registry.get(strategy_name)
     if strategy is None:
         raise ValueError(f"未知策略: {strategy_name}")
 
     task_id = uuid.uuid4().hex[:12]
+    provider = get_provider()
+    logger.info("[%s] 选股开始: strategy=%s params=%s", task_id, strategy_name, params)
 
-    # 初始化任务记录
-    cache.save_screen_task(task_id, strategy_name, params, status="pending")
-    with _lock:
-        _task_progress[task_id] = {
-            "status": "pending", "progress": 0, "total": 0,
-            "matched": 0, "skipped": 0, "errors": 0,
-        }
+    # Step 1: 行情快照（缓存新鲜则直接用, 由后台更新服务保持新鲜）
+    snapshot = provider.get_all_stocks()
+    if snapshot.empty:
+        raise RuntimeError("行情快照为空, 请检查数据服务")
+    logger.info("[%s] 行情快照: %d 只股票", task_id, len(snapshot))
 
-    # 启动后台线程执行
-    t = threading.Thread(
-        target=_run_screen_task,
-        args=(task_id, strategy_name, params, prefilter or {}),
-        daemon=True,
+    # Step 2: 预筛选
+    candidates = _apply_prefilter(snapshot, prefilter or {})
+    logger.info("[%s] 预筛选后: %d 只候选 (排除 %d 只)",
+                task_id, len(candidates), len(snapshot) - len(candidates))
+
+    # Step 3: 评估
+    # 组合策略走向量化快速通道（2次SQL+矩阵计算, 秒级）;
+    # 过闸门但缺5分钟缓存的股票回退逐股按需拉取（限流器兜底）
+    total = len(candidates)
+    results: list[dict] = []
+    errors = 0
+    processed = total
+
+    if strategy.name == "ma_combo":
+        from app.service.fast_combo import evaluate_combo_fast
+        fast = evaluate_combo_fast(params, candidates)
+    else:
+        fast = None
+
+    if fast is not None:
+        results = fast["results"]
+        pending = fast["pending_codes"]
+        logger.info("[%s] 快速通道: 命中 %d 只, 待补数据 %d 只",
+                    task_id, len(results), len(pending))
+        if pending:
+            sub = candidates[candidates["code"].isin(pending)].reset_index(drop=True)
+            batch_results, batch_errors = _process_batch(sub, strategy, params, provider)
+            results.extend(batch_results)
+            errors += batch_errors
+    else:
+        # 通用逐股模式（其他策略或快速通道不可用）
+        cached_hourly = cache.get_cached_codes("hourly_kline")
+        processed = 0
+        batch_size = settings.scan_batch_size
+        for batch_start in range(0, total, batch_size):
+            batch = candidates.iloc[batch_start:batch_start + batch_size]
+            batch_results, batch_errors = _process_batch(batch, strategy, params, provider)
+            results.extend(batch_results)
+            errors += batch_errors
+            processed += len(batch)
+
+            logger.info("[%s] 进度: %d/%d, 匹配: %d, 错误: %d",
+                        task_id, processed, total, len(results), errors)
+
+            # 仅当批次中有股票需要拉API时才限流等待（纯缓存批次直接继续）
+            api_needed = sum(1 for c in batch["code"] if c not in cached_hourly)
+            if api_needed > 0 and batch_start + batch_size < total:
+                import time
+                time.sleep(settings.scan_batch_pause)
+
+    # Step 4: 排序 + 保存结果（供历史查询）
+    results.sort(key=lambda x: x.get("score", 0), reverse=True)
+
+    from datetime import datetime
+    result_data = {
+        "task_id": task_id,
+        "strategy": strategy_name,
+        "params": params,
+        "total_scanned": total,
+        "matched_count": len(results),
+        "errors": errors,
+        "results": results,
+        "completed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+
+    cache.save_screen_task(
+        task_id, strategy_name, params,
+        status="completed", progress=total, total=total,
+        matched=len(results), errors=errors,
+        result_json=json.dumps(result_data, ensure_ascii=False, default=str),
     )
-    t.start()
-    logger.info("选股任务已启动: task_id=%s, strategy=%s", task_id, strategy_name)
-    return task_id
-
-
-def get_task_status(task_id: str) -> dict | None:
-    """查询任务状态和进度"""
-    # 优先从内存获取实时进度
-    with _lock:
-        mem = _task_progress.get(task_id)
-
-    db_task = cache.load_screen_task(task_id)
-    if db_task is None and mem is None:
-        return None
-
-    result = db_task or {}
-    if mem:
-        result.update(mem)
-    return result
+    logger.info("[%s] 选股完成: 扫描 %d 只, 匹配 %d 只, 错误 %d",
+                task_id, total, len(results), errors)
+    return result_data
 
 
 def get_task_result(task_id: str) -> dict | None:
-    """获取选股结果"""
+    """获取历史选股结果"""
     task = cache.load_screen_task(task_id)
     if not task or not task.get("result_json"):
         return None
@@ -92,134 +141,6 @@ def list_tasks(limit: int = 20) -> list[dict]:
 # ── 内部实现 ──────────────────────────────────────────────
 
 
-def _update_progress(task_id: str, **kwargs):
-    """更新任务进度（内存 + DB）"""
-    with _lock:
-        if task_id in _task_progress:
-            _task_progress[task_id].update(kwargs)
-        progress = _task_progress.get(task_id, {}).get("progress", 0)
-        total = _task_progress.get(task_id, {}).get("total", 0)
-        matched = _task_progress.get(task_id, {}).get("matched", 0)
-        skipped = _task_progress.get(task_id, {}).get("skipped", 0)
-        errors = _task_progress.get(task_id, {}).get("errors", 0)
-        status = kwargs.get("status", "running")
-
-    cache.save_screen_task(
-        task_id,
-        strategy=kwargs.get("strategy", ""),
-        params=kwargs.get("params", {}),
-        status=status,
-        progress=progress,
-        total=total,
-        matched=matched,
-        skipped=skipped,
-        errors=errors,
-    )
-
-
-def _run_screen_task(task_id: str, strategy_name: str,
-                     params: dict, prefilter: dict):
-    """后台执行选股任务"""
-    try:
-        strategy = strategy_registry.get(strategy_name)
-        provider = get_provider()
-
-        _update_progress(task_id, status="running", strategy=strategy_name, params=params)
-
-        # Step 1: 刷新行情快照
-        logger.info("[%s] Step 1: 刷新行情快照...", task_id)
-        snapshot = provider.get_all_stocks(force_refresh=True)
-        if snapshot.empty:
-            _update_progress(task_id, status="failed", progress=0)
-            logger.error("[%s] 行情快照为空", task_id)
-            return
-
-        logger.info("[%s] 行情快照: %d 只股票", task_id, len(snapshot))
-
-        # Step 2: 预筛选
-        candidates = _apply_prefilter(snapshot, prefilter)
-        logger.info("[%s] 预筛选后: %d 只候选 (排除 %d 只)",
-                    task_id, len(candidates), len(snapshot) - len(candidates))
-
-        # Step 3: 缓存预筛 - 利用已有K线缓存快速排除（仅单周期 MA 策略）
-        if strategy.dual_timeframe:
-            cache_skipped = 0
-        else:
-            candidates, cache_skipped = _cache_prefilter(candidates, params)
-            logger.info("[%s] 缓存预筛后: %d 只候选 (缓存排除 %d 只)",
-                        task_id, len(candidates), cache_skipped)
-
-        # Step 4: 并发获取K线 + 策略评估
-        total = len(candidates)
-        _update_progress(task_id, total=total, progress=0)
-
-        results = []
-        errors = 0
-        processed = 0
-
-        # 分批并发处理
-        batch_size = settings.scan_batch_size
-        for batch_start in range(0, total, batch_size):
-            batch = candidates.iloc[batch_start:batch_start + batch_size]
-            batch_results, batch_errors = _process_batch(
-                task_id, batch, strategy, params, provider
-            )
-            results.extend(batch_results)
-            errors += batch_errors
-            processed += len(batch)
-
-            _update_progress(
-                task_id,
-                progress=processed,
-                matched=len(results),
-                errors=errors,
-            )
-
-            logger.info("[%s] 进度: %d/%d, 匹配: %d, 错误: %d",
-                        task_id, processed, total, len(results), errors)
-
-            # 批次间暂停，避免 API 限流
-            if batch_start + batch_size < total:
-                import time
-                time.sleep(settings.scan_batch_pause)
-
-        # Step 5: 排序并保存结果
-        results.sort(key=lambda x: (x.get("score", 0), x.get("above_count", 0)), reverse=True)
-
-        result_data = {
-            "strategy": strategy_name,
-            "params": params,
-            "total_scanned": total,
-            "matched_count": len(results),
-            "errors": errors,
-            "cache_skipped": cache_skipped,
-            "prefilter_skipped": len(snapshot) - len(candidates) - cache_skipped,
-            "results": results,
-            "completed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        }
-
-        _update_progress(
-            task_id,
-            status="completed",
-            progress=total,
-            matched=len(results),
-            errors=errors,
-        )
-        cache.save_screen_task(
-            task_id, strategy_name, params,
-            status="completed", progress=total,
-            matched=len(results), errors=errors,
-            result_json=json.dumps(result_data, ensure_ascii=False, default=str),
-        )
-
-        logger.info("[%s] 选股完成: 扫描 %d 只, 匹配 %d 只, 错误 %d",
-                    task_id, total, len(results), errors)
-
-    except Exception as e:
-        logger.exception("[%s] 选股任务异常: %s", task_id, e)
-        _update_progress(task_id, status="failed")
-
-
 def _apply_prefilter(df: pd.DataFrame, prefilter: dict) -> pd.DataFrame:
     """
     应用预筛选条件
@@ -227,10 +148,10 @@ def _apply_prefilter(df: pd.DataFrame, prefilter: dict) -> pd.DataFrame:
     """
     mask = pd.Series(True, index=df.index)
 
-    # 排除 ST
+    # 排除 ST 和退市股
     if prefilter.get("exclude_st", True):
         if "name" in df.columns:
-            mask &= ~df["name"].str.contains("ST", case=False, na=False)
+            mask &= ~df["name"].str.contains("ST|退", case=False, na=False)
 
     # 价格区间
     min_price = prefilter.get("min_price")
@@ -240,59 +161,17 @@ def _apply_prefilter(df: pd.DataFrame, prefilter: dict) -> pd.DataFrame:
     if max_price:
         mask &= df["price"] <= max_price
 
-    # 最小市值（万元）—— 新浪接口不提供市值，跳过
-    min_mv = prefilter.get("min_market_cap")
-    if min_mv and "total_mv" in df.columns:
-        # 只在有实际市值数据时才过滤
-        if df["total_mv"].sum() > 0:
-            mask &= df["total_mv"] >= min_mv
-
     # 排除停牌: 只在交易时间过滤（有成交量数据时）
-    # 盘前/盘后 volume 全为 0，此时不过滤
     if "volume" in df.columns:
         has_volume = (df["volume"] > 0).sum()
-        if has_volume > len(df) * 0.1:  # 超过 10% 的股票有成交量，说明是交易时间
+        if has_volume > len(df) * 0.1:  # 超过10%有成交量说明是交易时间
             mask &= df["volume"] > 0
 
     return df[mask].reset_index(drop=True)
 
 
-def _cache_prefilter(candidates: pd.DataFrame, params: dict) -> tuple:
-    """
-    利用缓存的K线数据快速预筛
-    如果缓存中最新 MA169 远高于当前价格，则不可能站上全部均线
-    """
-    min_above = params.get("min_above", 4)
-    if min_above < 4:
-        return candidates, 0  # 要求不高，不做预筛
-
-    passed = []
-    skipped = 0
-
-    for _, row in candidates.iterrows():
-        code = row["code"]
-        price = float(row.get("price", 0))
-
-        cached = cache.load_kline(code, "hourly_kline")
-        if cached.empty or len(cached) < 169:
-            passed.append(row)  # 无缓存，保留候选
-            continue
-
-        # 计算缓存中的 MA169
-        ma169 = cached["close"].tail(169).mean()
-        # 如果价格低于 MA169 的 90%，基本不可能站上
-        if price < ma169 * 0.90:
-            skipped += 1
-        else:
-            passed.append(row)
-
-    result_df = pd.DataFrame(passed) if passed else pd.DataFrame()
-    return result_df, skipped
-
-
-def _process_batch(task_id: str, batch: pd.DataFrame,
-                   strategy, params: dict, provider) -> tuple:
-    """处理一批候选股票（并发获取K线 + 评估策略）"""
+def _process_batch(batch: pd.DataFrame, strategy, params: dict, provider) -> tuple:
+    """处理一批候选股票（并发读缓存 + 评估策略）"""
     results = []
     errors = 0
 
@@ -308,11 +187,10 @@ def _process_batch(task_id: str, batch: pd.DataFrame,
                 return None
 
             if strategy.dual_timeframe:
-                # 双周期策略: 先过 60 分钟闸门，通过后才拉 5 分钟数据（省请求）
+                # 双周期策略: 先过 60 分钟闸门，通过后才取 5 分钟数据（省请求）
                 gate = strategy.evaluate_gate(kline, params)
                 if not gate.get("passed", False):
                     return None
-                # 5分钟数据需满足慢线周期 + 信号窗口（如 MA288 需 340+ 根）
                 need_5min = params.get("min_slow", 144) + params.get("min_lookback", 48) + 10
                 kline_5min = provider.get_5min_kline(code, min_candles=need_5min)
                 if kline_5min.empty:
@@ -325,13 +203,11 @@ def _process_batch(task_id: str, batch: pd.DataFrame,
             score = eval_result.get("score", 0)
             details = eval_result.get("details", {})
 
-            # 只返回满足条件的（双周期策略依赖 score 阈值）
-            min_above = params.get("min_above", 4)
-            above_count = details.get("above_count", 0)
+            # 只保留有意义的信号
             if strategy.dual_timeframe:
                 if score < 55:
                     return None
-            elif above_count < min_above and score < 50:
+            elif details.get("above_count", 0) < params.get("min_above", 4) and score < 50:
                 return None
 
             return {

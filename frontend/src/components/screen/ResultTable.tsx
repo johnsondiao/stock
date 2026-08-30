@@ -103,8 +103,9 @@ export function ResultTable() {
               <ThCell label="评分" sortKey="score" />
               <ThCell label="信号" sortKey="signal" />
               <ThCell label="站上均线" sortKey="above_count" />
-              <ThCell label="新鲜度" sortKey="fresh_candles" />
               <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500">多头排列</th>
+              <ThCell label="60分金叉" sortKey="hourly_cross_bars_ago" />
+              <ThCell label="5分金叉" sortKey="min_cross_bars_ago" />
             </tr>
           </thead>
           <tbody>
@@ -121,20 +122,27 @@ export function ResultTable() {
                   {s.signal}
                 </td>
                 <td className="px-3 py-2.5 text-sm">
-                  {s.above_count}/{s.total_ma}
-                </td>
-                <td className="px-3 py-2.5 text-sm">
-                  {s.fresh_candles != null && (
-                    <span className={s.fresh_candles <= 4 ? 'text-orange-500 font-semibold' : 'text-gray-400'}>
-                      {s.fresh_candles}根
-                    </span>
-                  )}
+                  {s.above_count != null && `${s.above_count}/${s.total_ma ?? 4}`}
                 </td>
                 <td className="px-3 py-2.5 text-sm">
                   {s.ma_aligned ? (
                     <span className="text-red-500 font-semibold">是</span>
                   ) : (
                     <span className="text-gray-400">否</span>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 text-sm">
+                  {s.hourly_cross_bars_ago != null && (
+                    <span className={s.hourly_fresh ? 'text-orange-500 font-semibold' : 'text-gray-500'}>
+                      {s.hourly_cross_bars_ago}根前
+                    </span>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 text-sm">
+                  {s.min_cross_bars_ago != null && (
+                    <span className={s.min_fresh ? 'text-orange-500 font-semibold' : 'text-gray-500'}>
+                      {s.min_cross_bars_ago}根前
+                    </span>
                   )}
                 </td>
               </tr>

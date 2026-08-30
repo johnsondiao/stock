@@ -75,7 +75,17 @@ class TestScreenEndpoints:
         })
         assert resp.status_code == 400
 
-    def test_start_screen_valid(self, client):
+    def test_start_screen_valid(self, client, monkeypatch):
+        """选股同步执行: mock 掉真实扫描，验证接口返回完整结果"""
+        from app.api.routes import screen as screen_route
+        monkeypatch.setattr(
+            screen_route.screener_service, "run_screen",
+            lambda strategy_name, params, prefilter: {
+                "task_id": "test123", "strategy": strategy_name,
+                "total_scanned": 100, "matched_count": 0, "errors": 0,
+                "results": [],
+            },
+        )
         resp = client.post("/api/screen", json={
             "strategy": "ma_combo",
             "params": {"min_above": 4},
@@ -83,9 +93,11 @@ class TestScreenEndpoints:
         assert resp.status_code == 200
         data = resp.json()
         assert "task_id" in data
+        assert "results" in data
+        assert data["strategy"] == "ma_combo"
 
-    def test_get_task_not_found(self, client):
-        resp = client.get("/api/screen/nonexistent")
+    def test_get_task_result_not_found(self, client):
+        resp = client.get("/api/screen/nonexistent/result")
         assert resp.status_code == 404
 
     def test_history(self, client):

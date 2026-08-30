@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import {
-  fetchStrategies, startScreen, fetchTaskStatus, fetchTaskResult,
+  fetchStrategies, startScreen,
   type StrategyInfo, type ScreenResultData, type PrefilterParams,
 } from '../api/client'
 
@@ -11,13 +11,9 @@ interface ScreenState {
   params: Record<string, unknown>
   prefilter: PrefilterParams
 
-  // 任务
-  taskId: string | null
-  status: 'idle' | 'pending' | 'running' | 'completed' | 'failed'
-  progress: number
-  total: number
-  matched: number
-  errors: number
+  // 执行状态（同步: 点击后等待结果直接返回）
+  status: 'idle' | 'running' | 'completed' | 'failed'
+  errorMsg: string | null
 
   // 结果
   result: ScreenResultData | null
@@ -28,7 +24,6 @@ interface ScreenState {
   setParam: (key: string, value: unknown) => void
   setPrefilter: (prefilter: PrefilterParams) => void
   runScreen: () => Promise<void>
-  pollProgress: () => void
   reset: () => void
 }
 
@@ -39,12 +34,8 @@ export const useScreenStore = create<ScreenState>((set, get) => ({
   params: {},
   prefilter: { exclude_st: true },
 
-  taskId: null,
   status: 'idle',
-  progress: 0,
-  total: 0,
-  matched: 0,
-  errors: 0,
+  errorMsg: null,
 
   result: null,
 
@@ -90,67 +81,28 @@ export const useScreenStore = create<ScreenState>((set, get) => ({
     set({ prefilter })
   },
 
-  // 启动选股
+  // 同步执行选股: 数据由后台更新服务保持新鲜，这里只读缓存快速返回
   runScreen: async () => {
     const { selectedStrategy, params, prefilter } = get()
     if (!selectedStrategy) return
 
     try {
-      set({ status: 'pending', progress: 0, total: 0, matched: 0, errors: 0, result: null })
-      const { task_id } = await startScreen({
+      set({ status: 'running', result: null, errorMsg: null })
+      const result = await startScreen({
         strategy: selectedStrategy,
         params,
         prefilter,
       })
-      set({ taskId: task_id, status: 'running' })
-
-      // 开始轮询进度
-      get().pollProgress()
+      set({ result, status: 'completed' })
     } catch (err) {
-      console.error('启动选股失败:', err)
-      set({ status: 'failed' })
+      console.error('选股失败:', err)
+      const msg = err instanceof Error ? err.message : '未知错误'
+      set({ status: 'failed', errorMsg: msg })
     }
-  },
-
-  // 轮询进度
-  pollProgress: () => {
-    const { taskId, status } = get()
-    if (!taskId || status !== 'running') return
-
-    const poll = async () => {
-      try {
-        const task = await fetchTaskStatus(taskId!)
-        set({
-          progress: task.progress,
-          total: task.total,
-          matched: task.matched,
-          errors: task.errors,
-        })
-
-        if (task.status === 'completed') {
-          // 获取结果
-          const result = await fetchTaskResult(taskId!)
-          set({ result, status: 'completed' })
-        } else if (task.status === 'failed') {
-          set({ status: 'failed' })
-        } else {
-          // 继续轮询
-          setTimeout(poll, 2000)
-        }
-      } catch (err) {
-        console.error('轮询进度失败:', err)
-        setTimeout(poll, 5000)
-      }
-    }
-
-    setTimeout(poll, 1000)
   },
 
   // 重置
   reset: () => {
-    set({
-      taskId: null, status: 'idle', progress: 0, total: 0,
-      matched: 0, errors: 0, result: null,
-    })
+    set({ status: 'idle', result: null, errorMsg: null })
   },
 }))
