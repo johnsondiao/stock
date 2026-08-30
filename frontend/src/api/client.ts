@@ -53,9 +53,6 @@ export interface ScreenResult {
   pct_change: number
   signal: string
   score: number
-  above_count?: number
-  total_ma?: number
-  ma_aligned?: boolean
   hourly_cross_bars_ago?: number | null
   min_cross_bars_ago?: number | null
   hourly_fresh?: boolean

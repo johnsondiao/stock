@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>双周期均线金叉策略</title>
+<title>多周期均线共振策略</title>
 <style>
   @page { size: 96mm 200mm; margin: 7mm 6mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -44,9 +44,10 @@
     border-radius: 8px; padding: 8px 10px; margin: 5px 0; color: #fff;
     page-break-inside: avoid;
   }
-  .f1 { background: #34558b; }
-  .f2 { background: #4a6fa5; }
-  .f3 { background: #6b8fc4; }
+  .f1 { background: #2c4a7c; }
+  .f2 { background: #3d5d94; }
+  .f3 { background: #5274ac; }
+  .f4 { background: #6b8fc4; }
   .funnel-step .t { font-size: 11px; font-weight: bold; margin-bottom: 2px; }
   .funnel-step .d { font-size: 9.5px; opacity: 0.95; }
   .arrow { text-align: center; color: #8899bb; font-size: 11px; margin: 1px 0; }
@@ -60,27 +61,33 @@
 <body>
 
 <div class="cover">
-  <h1>双周期均线金叉策略</h1>
-  <div class="sub">60分钟多均线 + 60分钟金叉定方向 · 5分钟金叉定入场</div>
+  <h1>多周期均线共振策略</h1>
+  <div class="sub">60分钟定方向 · 日线确认趋势 · 5分钟定入场</div>
 </div>
 
-<h2>一、选股逻辑（三段漏斗）</h2>
-<p>全市场主板股票（排除 ST / 退市），依次通过三关才入选：</p>
+<h2>一、选股逻辑（四段漏斗）</h2>
+<p>全市场主板股票（排除 ST / 退市），依次通过四关才入选：</p>
 
 <div class="funnel-step f1">
-  <div class="t">第一关 · 多均线状态（60分钟）</div>
-  <div class="d">收盘价同时站上 MA12、MA60、MA144、MA169 全部四条均线</div>
+  <div class="t">第一关 · 60分钟状态</div>
+  <div class="d">收盘价站上 60分钟快线（MA24）与慢线（MA60）</div>
 </div>
 <div class="arrow">▼</div>
 
 <div class="funnel-step f2">
-  <div class="t">第二关 · 方向确认（60分钟金叉）</div>
+  <div class="t">第二关 · 60分钟金叉（定方向）</div>
   <div class="d">当前 MA24 &gt; MA60，且 MA24 上穿 MA60 的金叉发生在最近 8 根K线内</div>
 </div>
 <div class="arrow">▼</div>
 
 <div class="funnel-step f3">
-  <div class="t">第三关 · 入场信号（5分钟金叉）</div>
+  <div class="t">第三关 · 日线趋势确认</div>
+  <div class="d">日线 MA12 &gt; MA60（大级别趋势向上才允许开仓）</div>
+</div>
+<div class="arrow">▼</div>
+
+<div class="funnel-step f4">
+  <div class="t">第四关 · 5分钟金叉（定入场）</div>
   <div class="d">当前 MA12 &gt; MA288，且 MA12 上穿 MA288 的金叉发生在最近 48 根K线内</div>
 </div>
 <div class="arrow">▼ 综合打分，只保留 ≥55 分</div>
@@ -96,27 +103,25 @@
 
 <h2>三、打分规则</h2>
 <div class="card">
-  <b>三个判定量：</b>
+  <b>判定量：</b>
   <ul>
     <li><b>60分钟新鲜</b>：60分钟金叉距今 ≤ 4 根</li>
     <li><b>5分钟新鲜</b>：5分钟金叉距今 ≤ 12 根</li>
     <li><b>价格确认</b>：收盘价 &gt; 5分钟 MA12</li>
-    <li><b>多头排列</b>：MA12 ≥ MA60 ≥ MA144 ≥ MA169</li>
   </ul>
 </div>
 <table>
   <tr><th>条件组合</th><th>分</th><th>信号</th></tr>
-  <tr><td>多头排列 + 双新鲜 + 价格确认</td><td class="score-98">98</td><td>STRONG_BUY</td></tr>
-  <tr><td>双新鲜 + 价格确认</td><td><b>95</b></td><td>STRONG_BUY</td></tr>
-  <tr><td>5分钟新鲜 + 价格确认</td><td><b>88</b></td><td>STRONG_BUY</td></tr>
-  <tr><td>仅5分钟新鲜</td><td>75</td><td>BUY</td></tr>
+  <tr><td>60分新鲜 + 5分新鲜 + 价格确认</td><td class="score-98">98</td><td>STRONG_BUY</td></tr>
+  <tr><td>5分新鲜 + 价格确认</td><td><b>90</b></td><td>STRONG_BUY</td></tr>
+  <tr><td>仅5分新鲜</td><td>75</td><td>BUY</td></tr>
   <tr><td>金叉在窗口内但不新鲜</td><td>62</td><td>BUY</td></tr>
 </table>
 
 <h2>四、出场与仓位</h2>
 <div class="card">
   <ol>
-    <li><b>离场：</b>60分钟趋势破坏即走——MA24 死叉 MA60，或价格有效跌破均线体系</li>
+    <li><b>离场：</b>60分钟趋势破坏即走——MA24 死叉 MA60，或价格有效跌破均线</li>
     <li><b>止盈：</b>开仓后分批止盈</li>
     <li><b>底仓：</b>留底仓跟趋势，直到大周期趋势破坏</li>
   </ol>
@@ -125,13 +130,13 @@
 <h2>五、可调参数</h2>
 <table>
   <tr><th>参数</th><th>默认</th><th>含义</th></tr>
-  <tr><td>min_above</td><td>4</td><td>至少站上几条均线</td></tr>
   <tr><td>hourly_fast / slow</td><td>24 / 60</td><td>60分钟金叉快慢线</td></tr>
   <tr><td>min_fast / slow</td><td>12 / 288</td><td>5分钟金叉快慢线</td></tr>
   <tr><td>hourly_lookback</td><td>8根</td><td>60分钟金叉确认窗口</td></tr>
   <tr><td>min_lookback</td><td>48根</td><td>5分钟入场信号窗口</td></tr>
   <tr><td>fresh_min_bars</td><td>12根</td><td>5分钟新鲜金叉阈值</td></tr>
 </table>
+<p style="font-size:9px; color:#667;">日线确认固定为 MA12 &gt; MA60，不可调。</p>
 
 <div class="footer">数据截至 2026-08-28 收盘</div>
 

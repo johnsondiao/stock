@@ -187,8 +187,9 @@ def _process_batch(batch: pd.DataFrame, strategy, params: dict, provider) -> tup
                 return None
 
             if strategy.dual_timeframe:
-                # 双周期策略: 先过 60 分钟闸门，通过后才取 5 分钟数据（省请求）
-                gate = strategy.evaluate_gate(kline, params)
+                # 双周期策略: 先过 60分钟+日线闸门，通过后才取 5 分钟数据（省请求）
+                kline_daily = provider.get_daily_kline(code)
+                gate = strategy.evaluate_gate(kline, params, kline_daily=kline_daily)
                 if not gate.get("passed", False):
                     return None
                 need_5min = params.get("min_slow", 144) + params.get("min_lookback", 48) + 10

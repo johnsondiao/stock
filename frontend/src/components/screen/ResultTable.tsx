@@ -102,8 +102,6 @@ export function ResultTable() {
               <ThCell label="涨跌%" sortKey="pct_change" />
               <ThCell label="评分" sortKey="score" />
               <ThCell label="信号" sortKey="signal" />
-              <ThCell label="站上均线" sortKey="above_count" />
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500">多头排列</th>
               <ThCell label="60分金叉" sortKey="hourly_cross_bars_ago" />
               <ThCell label="5分金叉" sortKey="min_cross_bars_ago" />
             </tr>
@@ -120,16 +118,6 @@ export function ResultTable() {
                 <td className="px-3 py-2.5 text-sm font-semibold">{s.score}</td>
                 <td className={`px-3 py-2.5 text-sm ${signalColor(s.signal)}`}>
                   {s.signal}
-                </td>
-                <td className="px-3 py-2.5 text-sm">
-                  {s.above_count != null && `${s.above_count}/${s.total_ma ?? 4}`}
-                </td>
-                <td className="px-3 py-2.5 text-sm">
-                  {s.ma_aligned ? (
-                    <span className="text-red-500 font-semibold">是</span>
-                  ) : (
-                    <span className="text-gray-400">否</span>
-                  )}
                 </td>
                 <td className="px-3 py-2.5 text-sm">
                   {s.hourly_cross_bars_ago != null && (

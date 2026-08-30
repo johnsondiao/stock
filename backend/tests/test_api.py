@@ -55,7 +55,7 @@ class TestStrategyEndpoints:
         assert resp.status_code == 200
         data = resp.json()
         assert "params_schema" in data
-        assert "min_above" in data["params_schema"]
+        assert "hourly_fast" in data["params_schema"]
 
 
 class TestMarketEndpoints:

@@ -1,28 +1,28 @@
-"""组合策略: 多均线多头(定强弱) × 双周期金叉(定买卖点)
+"""组合策略: 多周期均线共振（60分钟定方向 + 日线确认趋势 + 5分钟定入场）
 
-设计思想:
-- 多均线策略回答"哪只股票强": 股价站上全部均线 + 均线多头排列 = 强势趋势状态
-- 双周期金叉策略回答"什么时候买": 60分钟金叉确认方向, 5分钟金叉触发入场
-- 组合后三段漏斗: 先确认趋势状态(空间), 再确认趋势刚转多(拐点), 最后精确入场(时机)
+四段漏斗:
+1. 60分钟状态: 价格站上快线(默认MA24)与慢线(默认MA60)
+2. 60分钟金叉: 快线上穿慢线, 且刚发生不久 → 方向确认
+3. 日线趋势: 日线 MA12 > MA60 → 大级别趋势确认
+4. 5分钟入场: 快线(默认MA12)上穿长周期线(默认MA288) → 扣动扳机
 
-三段漏斗:
-1. 60分钟多均线状态: 价格站上 MA12/MA60/MA144/MA169 (至少 min_above 条) + 可选多头排列
-2. 60分钟金叉闸门: 快线(默认MA24)上穿慢线(默认MA60), 且刚发生不久 → 趋势刚转多
-3. 5分钟金叉入场: 快线(默认MA12)上穿长周期线(默认MA288), 扣动扳机
+参数换算: 5分钟 x 288根 = 1440分钟 = 60分钟 x 24根
+股票折半版: 60分钟 12/60 + 5分钟 12/144 (股票日交易时长约为期货一半)
 """
 
 import pandas as pd
 from app.strategy.base import Strategy, Signal
 from app.strategy.indicators import calc_ma
 
-# 多均线状态检查用的四条均线
-STATE_MA_PERIODS = [12, 60, 144, 169]
-
-# 默认金叉参数: 期货原版 (60分钟24/60 + 5分钟12/288)
+# 默认金叉参数: 期货原版 (可通过 params 覆盖为折半版)
 DEFAULT_HOURLY_FAST = 24
 DEFAULT_HOURLY_SLOW = 60
 DEFAULT_MIN_FAST = 12
 DEFAULT_MIN_SLOW = 288
+
+# 日线趋势确认: MA12 > MA60 (固定)
+DAILY_FAST = 12
+DAILY_SLOW = 60
 
 
 class MAComboStrategy(Strategy):
@@ -33,8 +33,8 @@ class MAComboStrategy(Strategy):
 
     @property
     def description(self) -> str:
-        return ("组合策略：多均线多头定强弱（站上全部均线+多头排列）× "
-                "双周期金叉定买卖点（60分钟定方向+5分钟定时机），三段漏斗共振开仓")
+        return ("组合策略：60分钟价格站上快慢线 + 60分钟金叉定方向 + "
+                "日线MA12>MA60确认趋势 + 5分钟金叉定入场，四段漏斗共振开仓")
 
     @property
     def dual_timeframe(self) -> bool:
@@ -43,45 +43,37 @@ class MAComboStrategy(Strategy):
     @property
     def params_schema(self) -> dict:
         return {
-            "min_above": {
-                "type": "integer",
-                "label": "最少站上均线数",
-                "default": 4,
-                "min": 1,
-                "max": 4,
-                "description": "60分钟收盘价至少站上几条均线(4=全部站上)",
-            },
             "hourly_fast": {
                 "type": "integer",
-                "label": "60分钟金叉快线",
+                "label": "60分钟快线周期",
                 "default": 24,
                 "min": 2,
                 "max": 60,
-                "description": "60分钟金叉快线(期货版24/折半版12)",
+                "description": "60分钟快线(期货版24/折半版12)",
             },
             "hourly_slow": {
                 "type": "integer",
-                "label": "60分钟金叉慢线",
+                "label": "60分钟慢线周期",
                 "default": 60,
                 "min": 10,
                 "max": 200,
-                "description": "60分钟金叉慢线(默认60)",
+                "description": "60分钟慢线(默认60)",
             },
             "min_fast": {
                 "type": "integer",
-                "label": "5分钟金叉快线",
+                "label": "5分钟快线周期",
                 "default": 12,
                 "min": 2,
                 "max": 60,
-                "description": "5分钟金叉快线(默认12)",
+                "description": "5分钟快线(默认12)",
             },
             "min_slow": {
                 "type": "integer",
-                "label": "5分钟金叉慢线",
+                "label": "5分钟慢线周期",
                 "default": 288,
                 "min": 10,
                 "max": 400,
-                "description": "5分钟金叉慢线(期货版288/折半版144)",
+                "description": "5分钟慢线(期货版288/折半版144)",
             },
             "hourly_lookback": {
                 "type": "integer",
@@ -109,78 +101,75 @@ class MAComboStrategy(Strategy):
             },
         }
 
-    # ── 第一段 + 第二段: 60分钟 多均线状态 + 金叉闸门 ──────
+    # ── 闸门: 60分钟状态 + 60分钟金叉 + 日线趋势 ──────────
 
-    def evaluate_gate(self, kline: pd.DataFrame, params: dict) -> dict:
+    def evaluate_gate(self, kline: pd.DataFrame, params: dict,
+                      kline_daily: pd.DataFrame | None = None) -> dict:
         """
-        60分钟闸门（两个条件都要满足）:
-        A. 多均线状态: 站上均线数 >= min_above
-        B. 金叉确认: 当前快线 > 慢线, 且金叉发生在最近 hourly_lookback 根内
+        三段闸门（全部通过才放行）:
+        A. 60分钟: 当前价站上快线与慢线
+        B. 60分钟: 当前快线 > 慢线, 且金叉发生在最近 hourly_lookback 根内
+        C. 日线:   MA12 > MA60 (趋势确认)
         """
-        min_above = params.get("min_above", 4)
         hourly_fast = params.get("hourly_fast", DEFAULT_HOURLY_FAST)
         hourly_slow = params.get("hourly_slow", DEFAULT_HOURLY_SLOW)
         hourly_lookback = params.get("hourly_lookback", 8)
 
-        need = max(hourly_slow, max(STATE_MA_PERIODS)) + 2
+        need = hourly_slow + 2
         if len(kline) < need:
-            return {"passed": False, "details": {"gate_reason": "数据不足"}}
+            return {"passed": False, "details": {"gate_reason": "60分钟数据不足"}}
 
-        periods = sorted(set(STATE_MA_PERIODS + [hourly_fast, hourly_slow]))
-        df = calc_ma(kline.copy(), periods=periods)
+        df = calc_ma(kline.copy(), periods=[hourly_fast, hourly_slow])
+        fast_col, slow_col = f"ma{hourly_fast}", f"ma{hourly_slow}"
         latest = df.iloc[-1]
         price = float(latest["close"])
 
-        # ── 条件A: 多均线状态 ──
-        above_count = 0
-        for p in STATE_MA_PERIODS:
-            ma_val = latest[f"ma{p}"]
-            if pd.notna(ma_val) and price > ma_val:
-                above_count += 1
-
-        # 均线多头排列: MA12 > MA60 > MA144 > MA169
-        ma_vals = [latest.get(f"ma{p}") for p in STATE_MA_PERIODS]
-        ma_aligned = all(
-            pd.notna(ma_vals[i]) and pd.notna(ma_vals[i + 1]) and ma_vals[i] >= ma_vals[i + 1]
-            for i in range(len(ma_vals) - 1)
-        )
-
         gate_details = {
-            "above_count": above_count,
-            "total_ma": len(STATE_MA_PERIODS),
-            "ma_aligned": ma_aligned,
+            "hourly_ma_fast": round(float(latest[fast_col]), 4) if pd.notna(latest[fast_col]) else None,
+            "hourly_ma_slow": round(float(latest[slow_col]), 4) if pd.notna(latest[slow_col]) else None,
         }
 
-        if above_count < min_above:
-            gate_details["gate_reason"] = f"仅站上{above_count}条均线(<{min_above})"
-            return {"passed": False, "details": gate_details}
-
-        # ── 条件B: 金叉闸门 ──
-        fast_col, slow_col = f"ma{hourly_fast}", f"ma{hourly_slow}"
+        # ── A. 价格站上快慢线 ──
         if pd.isna(latest[fast_col]) or pd.isna(latest[slow_col]):
-            gate_details["gate_reason"] = "金叉均线数据不足"
+            gate_details["gate_reason"] = "均线数据不足"
+            return {"passed": False, "details": gate_details}
+        if not (price > latest[fast_col] and price > latest[slow_col]):
+            gate_details["gate_reason"] = "价格未站上60分钟快慢线"
             return {"passed": False, "details": gate_details}
 
+        # ── B. 60分钟金叉 ──
         if latest[fast_col] <= latest[slow_col]:
             gate_details["gate_reason"] = "60分钟金叉后未保持多头"
             return {"passed": False, "details": gate_details}
 
         cross_ago = self._bars_since_cross(df, fast_col, slow_col)
         gate_details["hourly_cross_bars_ago"] = cross_ago
-        gate_details["hourly_ma_fast"] = round(float(latest[fast_col]), 4)
-        gate_details["hourly_ma_slow"] = round(float(latest[slow_col]), 4)
-
         if cross_ago is None or cross_ago >= hourly_lookback:
             gate_details["gate_reason"] = "60分钟金叉太早或不存在"
             return {"passed": False, "details": gate_details}
 
+        # ── C. 日线趋势确认: MA12 > MA60 ──
+        if kline_daily is None or len(kline_daily) < DAILY_SLOW + 2:
+            gate_details["gate_reason"] = "日线数据不足"
+            return {"passed": False, "details": gate_details}
+
+        dd = calc_ma(kline_daily.copy(), periods=[DAILY_FAST, DAILY_SLOW])
+        d_latest = dd.iloc[-1]
+        d_fast, d_slow = d_latest[f"ma{DAILY_FAST}"], d_latest[f"ma{DAILY_SLOW}"]
+        gate_details["daily_ma_fast"] = round(float(d_fast), 4) if pd.notna(d_fast) else None
+        gate_details["daily_ma_slow"] = round(float(d_slow), 4) if pd.notna(d_slow) else None
+
+        if pd.isna(d_fast) or pd.isna(d_slow) or d_fast <= d_slow:
+            gate_details["gate_reason"] = "日线MA12未上穿MA60, 趋势未确认"
+            return {"passed": False, "details": gate_details}
+
         return {"passed": True, "details": gate_details}
 
-    # ── 第三段: 5分钟金叉入场 ──────────────────────────────
+    # ── 入场: 5分钟金叉 ──────────────────────────────────
 
     def evaluate_entry(self, kline_5min: pd.DataFrame, gate: dict, params: dict) -> dict:
         """
-        5分钟入场: 快线上穿长周期线金叉, 结合闸门的多均线状态综合打分
+        5分钟入场: 快线上穿长周期线金叉, 结合闸门结果打分
         """
         min_fast = params.get("min_fast", DEFAULT_MIN_FAST)
         min_slow = params.get("min_slow", DEFAULT_MIN_SLOW)
@@ -219,21 +208,18 @@ class MAComboStrategy(Strategy):
         if cross_ago is None or cross_ago >= min_lookback:
             return {"signal": Signal.NEUTRAL, "score": 0, "details": details}
 
-        # ── 综合打分: 趋势质量(多均线) × 共振新鲜度(双金叉) ──
-        aligned = details.get("ma_aligned", False)
+        # ── 打分: 共振新鲜度 ──
         hourly_ago = details.get("hourly_cross_bars_ago")
         hourly_fresh = hourly_ago is not None and hourly_ago <= 4
         min_fresh = cross_ago <= fresh_bars
         price_above = price > latest[fast_col]
 
-        if aligned and hourly_fresh and min_fresh and price_above:
-            signal, score = Signal.STRONG_BUY, 98   # 满配共振: 多头排列+双新鲜金叉+价格确认
-        elif hourly_fresh and min_fresh and price_above:
-            signal, score = Signal.STRONG_BUY, 95   # 双新鲜金叉+价格确认(排列未理顺)
+        if hourly_fresh and min_fresh and price_above:
+            signal, score = Signal.STRONG_BUY, 98   # 双周期刚金叉 + 价格确认
         elif min_fresh and price_above:
-            signal, score = Signal.STRONG_BUY, 88   # 5分钟新鲜入场点
+            signal, score = Signal.STRONG_BUY, 90   # 5分钟新入场点 + 价格确认
         elif min_fresh:
-            signal, score = Signal.BUY, 75          # 5分钟新金叉但价格未确认
+            signal, score = Signal.BUY, 75          # 5分钟新金叉, 价格未确认
         else:
             signal, score = Signal.BUY, 62          # 金叉较早, 趋势进行中
 
@@ -241,10 +227,10 @@ class MAComboStrategy(Strategy):
         details["min_fresh"] = min_fresh
         return {"signal": signal, "score": score, "details": details}
 
-    # ── 兼容单周期接口 ─────────────────────────────────────
+    # ── 兼容单周期接口（仅60分钟部分） ────────────────────
 
     def evaluate(self, kline: pd.DataFrame, params: dict) -> dict:
-        gate = self.evaluate_gate(kline, params)
+        gate = self.evaluate_gate(kline, params, kline_daily=None)
         if gate["passed"]:
             return {"signal": Signal.BUY, "score": 40, "details": gate["details"]}
         return {"signal": Signal.NEUTRAL, "score": 0, "details": gate["details"]}

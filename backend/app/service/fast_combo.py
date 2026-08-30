@@ -1,8 +1,7 @@
 """组合策略向量化快速评估 - 全市场一次读入, groupby 按股票批量计算
 
-性能对比:
-- 逐股模式: 3000 次 SQL + 3000 次均线计算 ≈ 数分钟
-- 向量化模式: 2 次 SQL + groupby 批量计算 ≈ 数秒
+四段漏斗向量化:
+1. 60分钟价格站上快慢线  2. 60分钟金叉  3. 日线MA12>MA60  4. 5分钟金叉
 
 关键: 用 groupby(code).transform 按每只股票独立计算均线与金叉,
 不依赖全市场日期对齐（新股/停牌股的缺失日期不会污染其他股票）。
@@ -13,9 +12,9 @@ import pandas as pd
 
 from app.database import get_db
 from app.strategy.ma_combo import (
-    STATE_MA_PERIODS,
     DEFAULT_HOURLY_FAST, DEFAULT_HOURLY_SLOW,
     DEFAULT_MIN_FAST, DEFAULT_MIN_SLOW,
+    DAILY_FAST, DAILY_SLOW,
 )
 from app.log_config import get_logger
 
@@ -51,7 +50,7 @@ def _add_ma(df: pd.DataFrame, periods: list[int]) -> pd.DataFrame:
 def _add_cross_ago(df: pd.DataFrame, fast_col: str, slow_col: str, window: int) -> pd.Series:
     """
     每只股票在 window 窗口内最近一次快线上穿慢线距今的K线数
-    返回以 code 为索引的 Series, 窗口内无金叉为 NaN
+    返回以 code 为索引的 Series, 窗口内无金叉则无该 code
     """
     d = df.copy()
     g = d.groupby("code", sort=False)
@@ -73,11 +72,10 @@ def evaluate_combo_fast(params: dict, candidates: pd.DataFrame) -> dict | None:
 
     :return: {
         "results": [...],        # 完整命中的结果
-        "pending_codes": [...],  # 过了60分钟闸门但缺5分钟缓存的代码（需按需拉取）
+        "pending_codes": [...],  # 过闸门但缺5分钟/日线缓存的代码（需按需拉取）
         "evaluated": int,
     }; 数据条件不满足时返回 None（调用方回退逐股模式）
     """
-    min_above = params.get("min_above", 4)
     hourly_fast = params.get("hourly_fast", DEFAULT_HOURLY_FAST)
     hourly_slow = params.get("hourly_slow", DEFAULT_HOURLY_SLOW)
     min_fast = params.get("min_fast", DEFAULT_MIN_FAST)
@@ -88,7 +86,7 @@ def evaluate_combo_fast(params: dict, candidates: pd.DataFrame) -> dict | None:
 
     cand_set = set(candidates["code"].tolist())
 
-    # ── 阶段1: 60分钟 全市场批量评估 ──
+    # ── 阶段1: 60分钟 状态 + 金叉 ──
     h = _load_long("hourly_kline")
     if h.empty:
         return None
@@ -96,56 +94,71 @@ def evaluate_combo_fast(params: dict, candidates: pd.DataFrame) -> dict | None:
     if h.empty:
         return None
 
-    periods = sorted(set(STATE_MA_PERIODS + [hourly_fast, hourly_slow]))
-    h = _add_ma(h, periods)
+    h = _add_ma(h, sorted({hourly_fast, hourly_slow}))
 
-    # 每只股票数据量过滤（新股历史短）
-    need_rows = max(hourly_slow, max(STATE_MA_PERIODS)) + 2
+    need_rows = hourly_slow + 2
     cnt_h = h.groupby("code")["close"].count()
-    valid_codes = cnt_h[cnt_h >= need_rows].index
-    h = h[h["code"].isin(valid_codes)]
+    h = h[h["code"].isin(cnt_h[cnt_h >= need_rows].index)]
     if h.empty:
         return None
 
-    # 每只股票最后一根（最新）
     last = h.groupby("code").tail(1).set_index("code").sort_index()
     price = last["close"]
+    fast_v, slow_v = last[f"ma{hourly_fast}"], last[f"ma{hourly_slow}"]
 
-    # 站上均线数量（NaN → 不计入）
-    above = pd.Series(0, index=last.index)
-    for p in STATE_MA_PERIODS:
-        above = above + (price > last[f"ma{p}"]).astype(int)
-
-    # 均线多头排列
-    vals = [last[f"ma{p}"] for p in STATE_MA_PERIODS]
-    aligned = pd.Series(True, index=last.index)
-    for i in range(len(vals) - 1):
-        aligned &= vals[i].notna() & vals[i + 1].notna() & (vals[i] >= vals[i + 1])
-
-    cur_bull = last[f"ma{hourly_fast}"] > last[f"ma{hourly_slow}"]
+    # A. 价格站上快慢线
+    state_ok = (price > fast_v) & (price > slow_v) & fast_v.notna() & slow_v.notna()
+    # B. 当前多头 + 金叉在窗口内
     cross_ago_h = _add_cross_ago(h, f"ma{hourly_fast}", f"ma{hourly_slow}", hourly_lookback)
+    gate_mask = state_ok & (fast_v > slow_v) & last.index.isin(cross_ago_h.index)
 
-    gate_mask = (above >= min_above) & cur_bull & last.index.isin(cross_ago_h.index)
-    gate_codes = list(last.index[gate_mask])
-    logger.info("快速评估: 60分钟闸门通过 %d/%d", len(gate_codes), len(valid_codes))
+    gate_codes_all = list(last.index[gate_mask])
+    logger.info("快速评估: 60分钟闸门通过 %d", len(gate_codes_all))
+    if not gate_codes_all:
+        return {"results": [], "pending_codes": [], "evaluated": len(cnt_h)}
 
+    # ── 阶段2: 日线趋势确认 MA12 > MA60 ──
+    daily = _load_long("daily_kline", gate_codes_all)
+    daily_bull = pd.Series(dtype=bool)
+    daily_ok_codes: set[str] = set()
+    if not daily.empty:
+        daily = _add_ma(daily, [DAILY_FAST, DAILY_SLOW])
+        cnt_d = daily.groupby("code")["close"].count()
+        daily = daily[daily["code"].isin(cnt_d[cnt_d >= DAILY_SLOW + 2].index)]
+        if not daily.empty:
+            d_last = daily.groupby("code").tail(1).set_index("code")
+            d_fast, d_slow = d_last[f"ma{DAILY_FAST}"], d_last[f"ma{DAILY_SLOW}"]
+            daily_bull = (d_fast > d_slow) & d_fast.notna() & d_slow.notna()
+            daily_ok_codes = set(d_last.index)
+
+    pending_codes: list[str] = []
+    gate_codes: list[str] = []
+    daily_details: dict[str, tuple[float, float]] = {}
+    for c in gate_codes_all:
+        if c not in daily_ok_codes:
+            pending_codes.append(c)        # 日线缓存缺失/不足 → 按需拉取
+        elif bool(daily_bull[c]):
+            gate_codes.append(c)
+        # 日线未确认 → 直接淘汰
+
+    logger.info("快速评估: 日线趋势确认 %d, 待补日线 %d", len(gate_codes), len(pending_codes))
     if not gate_codes:
-        return {"results": [], "pending_codes": [], "evaluated": len(valid_codes)}
+        return {"results": [], "pending_codes": pending_codes, "evaluated": len(cnt_h)}
 
-    # ── 阶段2: 5分钟 仅对闸门通过者批量评估 ──
+    # ── 阶段3: 5分钟 入场金叉 ──
     m5 = _load_long("kline_5min", gate_codes)
     results: list[dict] = []
-    pending_codes: list[str] = []
 
     if m5.empty:
-        return {"results": [], "pending_codes": gate_codes, "evaluated": len(valid_codes)}
+        pending_codes.extend(gate_codes)
+        return {"results": [], "pending_codes": pending_codes, "evaluated": len(cnt_h)}
 
     m5 = _add_ma(m5, sorted({min_fast, min_slow}))
     cnt_m = m5.groupby("code")["close"].count()
-    ok_codes = cnt_m[cnt_m >= min_slow + 2].index
+    ok_codes = set(cnt_m[cnt_m >= min_slow + 2].index)
     for c in gate_codes:
-        if c not in set(ok_codes):
-            pending_codes.append(c)          # 数据不足 → 按需拉取
+        if c not in ok_codes:
+            pending_codes.append(c)        # 5分钟数据不足 → 按需拉取
     m5 = m5[m5["code"].isin(ok_codes)]
 
     if not m5.empty:
@@ -162,16 +175,14 @@ def evaluate_combo_fast(params: dict, candidates: pd.DataFrame) -> dict | None:
             h_fresh = h_ago <= 4
             m_fresh = m_ago <= fresh_bars
             above5 = price5[entry_codes] > last5.loc[entry_codes, f"ma{min_fast}"]
-            al = aligned.reindex(entry_codes)
 
             scores = np.select(
                 [
-                    (al & h_fresh & m_fresh & above5).values,
                     (h_fresh & m_fresh & above5).values,
                     (m_fresh & above5).values,
                     m_fresh.values,
                 ],
-                [98, 95, 88, 75],
+                [98, 90, 75],
                 default=62,
             )
             cand_map = candidates.set_index("code")
@@ -185,9 +196,6 @@ def evaluate_combo_fast(params: dict, candidates: pd.DataFrame) -> dict | None:
                     "pct_change": float(row.get("pct_change", 0)) if row is not None else 0.0,
                     "signal": "strong_buy" if score >= 88 else "buy",
                     "score": score,
-                    "above_count": int(above[code]),
-                    "total_ma": len(STATE_MA_PERIODS),
-                    "ma_aligned": bool(al[code]),
                     "hourly_cross_bars_ago": int(h_ago[code]),
                     "min_cross_bars_ago": int(m_ago[code]),
                     "hourly_fresh": bool(h_fresh[code]),
@@ -198,5 +206,5 @@ def evaluate_combo_fast(params: dict, candidates: pd.DataFrame) -> dict | None:
                     "min_ma_slow": round(float(last5.loc[code, f"ma{min_slow}"]), 4),
                 })
 
-    logger.info("快速评估完成: 命中 %d 只, 待补5分钟数据 %d 只", len(results), len(pending_codes))
-    return {"results": results, "pending_codes": pending_codes, "evaluated": len(valid_codes)}
+    logger.info("快速评估完成: 命中 %d 只, 待补数据 %d 只", len(results), len(pending_codes))
+    return {"results": results, "pending_codes": pending_codes, "evaluated": len(cnt_h)}
