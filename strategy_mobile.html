@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>双周期组合策略详解</title>
+<style>
+  @page { size: 96mm 200mm; margin: 7mm 6mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Microsoft YaHei", sans-serif;
+    font-size: 10.5px; line-height: 1.65; color: #222;
+  }
+  .cover {
+    background: linear-gradient(135deg, #1a2a4a, #2c3e6b);
+    color: #fff; border-radius: 10px; padding: 18px 14px; margin-bottom: 12px;
+  }
+  .cover h1 { font-size: 17px; margin-bottom: 6px; }
+  .cover .sub { font-size: 10px; color: #b8c4e0; }
+  .cover .tag {
+    display: inline-block; background: #e8b93c; color: #3a2c00;
+    border-radius: 4px; padding: 1px 7px; font-size: 9px; font-weight: bold; margin-top: 8px;
+  }
+  h2 {
+    font-size: 13px; color: #1a2a4a; margin: 14px 0 6px;
+    border-left: 4px solid #e8b93c; padding-left: 7px;
+    page-break-after: avoid;
+  }
+  h3 { font-size: 11px; color: #2c3e6b; margin: 9px 0 4px; page-break-after: avoid; }
+  p { margin: 5px 0; }
+  .card {
+    background: #f5f7fb; border-radius: 8px; padding: 9px 10px; margin: 7px 0;
+    page-break-inside: avoid;
+  }
+  .highlight { background: #fff7e0; border: 1px solid #f0d68a; }
+  .formula {
+    background: #1a2a4a; color: #ffd76e; border-radius: 6px;
+    padding: 8px 10px; font-size: 10px; text-align: center; margin: 6px 0;
+    page-break-inside: avoid;
+  }
+  table {
+    width: 100%; border-collapse: collapse; margin: 6px 0; font-size: 9px;
+    page-break-inside: avoid;
+  }
+  th {
+    background: #2c3e6b; color: #fff; padding: 4px 4px; text-align: left; font-weight: normal;
+  }
+  td { border-bottom: 1px solid #dde3ee; padding: 4px 4px; }
+  tr:nth-child(even) td { background: #f5f7fb; }
+  .funnel-step {
+    border-radius: 8px; padding: 8px 10px; margin: 5px 0; color: #fff;
+    page-break-inside: avoid;
+  }
+  .f1 { background: #34558b; }
+  .f2 { background: #4a6fa5; }
+  .f3 { background: #6b8fc4; }
+  .funnel-step .t { font-size: 11px; font-weight: bold; margin-bottom: 2px; }
+  .funnel-step .d { font-size: 9.5px; opacity: 0.95; }
+  .arrow { text-align: center; color: #8899bb; font-size: 11px; margin: 1px 0; }
+  .drop { font-size: 8.5px; color: #c0392b; text-align: center; margin: 0 0 1px; }
+  ul, ol { padding-left: 16px; margin: 4px 0; }
+  li { margin: 2.5px 0; }
+  .score-98 { color: #c0392b; font-weight: bold; }
+  .note { font-size: 9px; color: #778; }
+  .footer { margin-top: 14px; text-align: center; font-size: 8.5px; color: #99a; }
+  b { color: #1a2a4a; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>双周期组合选股策略</h1>
+  <div class="sub">多均线定强弱 × 双周期金叉定买卖点</div>
+  <div class="tag">策略代号 ma_combo · 实战版</div>
+</div>
+
+<div class="card highlight">
+  <b>一句话：</b>三段漏斗全部通过才开仓——先确认股票强（多均线），再确认强势是刚形成的（60分钟金叉），最后确认当下就是买点（5分钟金叉）。
+</div>
+
+<h2>一、为什么要组合</h2>
+<table>
+  <tr><th></th><th>多均线</th><th>双金叉</th><th>组合</th></tr>
+  <tr><td>回答</td><td>哪只强？</td><td>何时买？</td><td>强+刚好买点</td></tr>
+  <tr><td>维度</td><td>趋势状态</td><td>趋势拐点</td><td>状态×拐点</td></tr>
+  <tr><td>单用短板</td><td>匹配太多</td><td>不知趋势厚度</td><td>互补</td></tr>
+</table>
+<p><b>理想买点同时满足三条：</b></p>
+<ol>
+  <li>它现在是强势的（价格站上全部均线）</li>
+  <li>强势是刚形成的（60分钟金叉刚发生，不是走完的行情）</li>
+  <li>当下出现入场扳机（5分钟金叉，精确到小时级）</li>
+</ol>
+
+<h2>二、参数换算原理</h2>
+<div class="formula">5分钟 × 288根 = 1440分钟 = 60分钟 × 24根</div>
+<p>即 <b>5分钟MA288 ≈ 60分钟MA24</b>。5分钟级别"上穿MA288"，本质是短期动能上穿了60分钟的大趋势线，实现大小周期共振。</p>
+<table>
+  <tr><th>版本</th><th>60分钟闸门</th><th>5分钟入场</th></tr>
+  <tr><td>期货原版</td><td>MA24 金叉 MA60</td><td>MA12 金叉 MA288</td></tr>
+  <tr><td>股票折半版</td><td>MA12 金叉 MA60</td><td>MA12 金叉 MA144</td></tr>
+</table>
+<p class="note">股票每天交易4小时（期货约8小时），周期折半：24→12，288→144。系统默认期货原版参数，可切换。</p>
+
+<h2>三、三段漏斗</h2>
+
+<div class="funnel-step f1">
+  <div class="t">第一段 · 它强吗？（60分钟多均线）</div>
+  <div class="d">收盘价站上 MA12 / MA60 / MA144 / MA169，至少4条全站上；同时记录是否多头排列（用于加分）</div>
+</div>
+<div class="drop">▼ 不满足 → 淘汰（趋势不强，不看）</div>
+
+<div class="funnel-step f2">
+  <div class="t">第二段 · 强势是刚形成的吗？（60分钟金叉）</div>
+  <div class="d">当前 MA24 &gt; MA60（金叉后保持多头），且金叉发生在最近 8 根内（2个交易日）</div>
+</div>
+<div class="drop">▼ 不满足 → 淘汰（行情已走远或不存在）</div>
+
+<div class="funnel-step f3">
+  <div class="t">第三段 · 现在就是买点吗？（5分钟金叉）</div>
+  <div class="d">当前 MA12 &gt; MA288（金叉后保持多头），且金叉发生在最近 48 根内（1个交易日）</div>
+</div>
+<div class="arrow">▼ 综合打分，只保留 ≥55 分</div>
+
+<div class="card">
+  <b>实测漏斗通过率：</b>约 13% 通过前两段闸门，第三段再筛掉约一半——信号稀缺而精确。弱市可能一只都选不出，这本身就是信号：没有好买点。
+</div>
+
+<h2>四、综合打分</h2>
+<p>打分 = <b>趋势质量</b>（多头排列）× <b>共振新鲜度</b>（双金叉新鲜 + 价格确认）</p>
+<ul class="note" style="font-size:9.5px; color:#445;">
+  <li><b>多头排列</b>：MA12 ≥ MA60 ≥ MA144 ≥ MA169</li>
+  <li><b>60分钟新鲜</b>：金叉距今 ≤ 4 根（1个交易日内）</li>
+  <li><b>5分钟新鲜</b>：金叉距今 ≤ 12 根（1小时内）</li>
+  <li><b>价格确认</b>：收盘价 &gt; 5分钟MA12（快线）</li>
+</ul>
+<table>
+  <tr><th>条件组合</th><th>分</th><th>含义</th></tr>
+  <tr><td>排列+双新鲜+价格确认</td><td class="score-98">98</td><td>满配共振，教科书级买点</td></tr>
+  <tr><td>双新鲜+价格确认</td><td><b>95</b></td><td>双周期刚共振</td></tr>
+  <tr><td>5分钟新鲜+价格确认</td><td><b>88</b></td><td>入场点新鲜，大周期稍早</td></tr>
+  <tr><td>仅5分钟新鲜</td><td>75</td><td>扳机刚扣动，价格未确认</td></tr>
+  <tr><td>金叉较早（窗口内）</td><td>62</td><td>趋势进行中，右侧跟随</td></tr>
+</table>
+
+<h2>五、可调参数</h2>
+<table>
+  <tr><th>参数</th><th>默认</th><th>说明</th></tr>
+  <tr><td>min_above</td><td>4</td><td>至少站上几条均线（1-4）</td></tr>
+  <tr><td>hourly_fast / slow</td><td>24 / 60</td><td>60分钟金叉快慢线</td></tr>
+  <tr><td>min_fast / slow</td><td>12 / 288</td><td>5分钟金叉快慢线</td></tr>
+  <tr><td>hourly_lookback</td><td>8根</td><td>60分钟金叉确认窗口</td></tr>
+  <tr><td>min_lookback</td><td>48根</td><td>5分钟入场信号窗口</td></tr>
+  <tr><td>fresh_min_bars</td><td>12根</td><td>5分钟新鲜金叉阈值</td></tr>
+</table>
+
+<h2>六、出场与仓位管理</h2>
+<div class="card">
+  <ol>
+    <li><b>离场：</b>60分钟趋势破坏即走——MA24 死叉 MA60，或价格有效跌破均线体系</li>
+    <li><b>止盈：</b>开仓后分批止盈，不追求卖在最高点</li>
+    <li><b>底仓：</b>留一部分仓位跟趋势跑，直到大周期趋势破坏</li>
+  </ol>
+</div>
+
+<h2>七、日常用法</h2>
+<ul>
+  <li>后台服务开盘时段每5分钟自动保鲜数据</li>
+  <li><b>收盘后跑一次选股</b>（十几秒出结果），输出即当日开仓候选清单</li>
+  <li>清单中 75/62 分的标的：次日盘中用折半版参数（12/60+12/144）跟踪5分钟级别的确认信号</li>
+  <li>下单前在行情软件二次确认5分钟金叉位置</li>
+</ul>
+
+<h2>八、已知局限</h2>
+<ul class="note">
+  <li>三关串联后信号稀缺，弱市可能空手而归（属正常信号）</li>
+  <li>预筛已排除ST与退市股，仍需人工复核基本面</li>
+  <li>基于收盘缓存数据选股，盘中入场以实时行情为准</li>
+</ul>
+
+<div class="footer">A股选股系统 · 组合策略文档 · 数据截至 2026-08-28 收盘</div>
+
+</body>
+</html>
