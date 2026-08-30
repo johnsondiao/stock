@@ -50,6 +50,7 @@ backend/check_*freshness*.py
 backend/check_times.py
 backend/top5_result.py
 backend/test_dual_strategy.py
+backend/test_combo_gate.py
 backend/run_dual_screen.py
 backend/run_dual_ma24.py
 backend/run_screen_now.py
