@@ -95,22 +95,22 @@ class TestSnapshot:
 
 class TestScreenTask:
     def test_save_and_load(self):
-        save_screen_task("test_task1", "ma_bull", {"min_above": 4},
+        save_screen_task("test_task1", "ma_combo", {"min_above": 4},
                          status="running", progress=50, total=100)
         task = load_screen_task("test_task1")
         assert task is not None
-        assert task["strategy"] == "ma_bull"
+        assert task["strategy"] == "ma_combo"
         assert task["progress"] == 50
 
     def test_update_task(self):
-        save_screen_task("test_task2", "ma_bull", {}, status="pending")
-        save_screen_task("test_task2", "ma_bull", {}, status="completed",
+        save_screen_task("test_task2", "ma_combo", {}, status="pending")
+        save_screen_task("test_task2", "ma_combo", {}, status="completed",
                          progress=100, total=100, matched=10)
         task = load_screen_task("test_task2")
         assert task["status"] == "completed"
         assert task["matched"] == 10
 
     def test_list_tasks(self):
-        save_screen_task("test_task3", "ma_bull", {}, status="completed")
+        save_screen_task("test_task3", "ma_combo", {}, status="completed")
         tasks = list_screen_tasks()
         assert len(tasks) > 0

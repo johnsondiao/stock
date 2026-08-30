@@ -1,24 +1,23 @@
-"""测试策略逻辑"""
+"""测试策略逻辑（当前仅组合策略 ma_combo）"""
 
 import pytest
 import pandas as pd
 import numpy as np
 from app.strategy.base import Signal
-from app.strategy.ma_bull import MABullStrategy
+from app.strategy.ma_combo import MAComboStrategy
 
 
 @pytest.fixture
-def ma_strategy():
-    return MABullStrategy()
+def combo_strategy():
+    return MAComboStrategy()
 
 
 @pytest.fixture
 def bullish_kline():
-    """生成上涨趋势K线（应该触发多头信号）"""
+    """生成上涨趋势K线"""
     np.random.seed(100)
     n = 250
     dates = pd.date_range("2024-01-01", periods=n, freq="h")
-    # 明显上涨趋势
     close = 10 + np.linspace(0, 5, n) + np.random.randn(n) * 0.1
     return pd.DataFrame({
         "date": dates,
@@ -47,26 +46,48 @@ def bearish_kline():
     })
 
 
-class TestMABullStrategy:
-    def test_name(self, ma_strategy):
-        assert ma_strategy.name == "ma_bull"
+class TestMAComboStrategy:
+    def test_name(self, combo_strategy):
+        assert combo_strategy.name == "ma_combo"
 
-    def test_params_schema(self, ma_strategy):
-        schema = ma_strategy.params_schema
-        assert "min_above" in schema
-        assert "fresh_threshold" in schema
+    def test_dual_timeframe(self, combo_strategy):
+        assert combo_strategy.dual_timeframe is True
 
-    def test_bullish_signal(self, ma_strategy, bullish_kline):
-        result = ma_strategy.evaluate(bullish_kline, {"min_above": 4, "fresh_threshold": 20})
-        assert result["score"] > 0
-        assert result["details"]["above_count"] > 0
+    def test_params_schema(self, combo_strategy):
+        schema = combo_strategy.params_schema
+        for key in ("min_above", "hourly_fast", "hourly_slow",
+                    "min_fast", "min_slow", "hourly_lookback",
+                    "min_lookback", "fresh_min_bars"):
+            assert key in schema
 
-    def test_bearish_signal(self, ma_strategy, bearish_kline):
-        result = ma_strategy.evaluate(bearish_kline, {"min_above": 4, "fresh_threshold": 4})
-        # 下跌趋势不应该站上全部均线
-        assert result["details"]["above_count"] < 4
+    def test_gate_bearish_fails(self, combo_strategy, bearish_kline):
+        """下跌趋势: 站上均线数不足, 闸门必须失败"""
+        gate = combo_strategy.evaluate_gate(bearish_kline, {})
+        assert gate["passed"] is False
+        assert gate["details"]["above_count"] < 4
 
-    def test_insufficient_data(self, ma_strategy):
+    def test_gate_structure(self, combo_strategy, bullish_kline):
+        """闸门返回结构完整"""
+        gate = combo_strategy.evaluate_gate(bullish_kline, {})
+        assert "passed" in gate
+        assert "details" in gate
+        assert "above_count" in gate["details"]
+
+    def test_entry_insufficient_data(self, combo_strategy, bullish_kline):
+        """5分钟数据不足 MA288 时返回 NEUTRAL"""
+        gate = {"passed": True, "details": {}}
+        result = combo_strategy.evaluate_entry(bullish_kline.tail(50), gate, {})
+        assert result["signal"] == Signal.NEUTRAL
+        assert result["score"] == 0
+
+    def test_evaluate_compatible(self, combo_strategy, bullish_kline):
+        """单周期兼容接口返回完整结构"""
+        result = combo_strategy.evaluate(bullish_kline, {})
+        assert "signal" in result
+        assert "score" in result
+        assert "details" in result
+
+    def test_insufficient_data(self, combo_strategy):
         short_df = pd.DataFrame({
             "date": range(10),
             "open": range(10),
@@ -75,17 +96,11 @@ class TestMABullStrategy:
             "close": range(10),
             "volume": range(10),
         })
-        result = ma_strategy.evaluate(short_df, {})
-        assert result["signal"] == Signal.NEUTRAL
+        gate = combo_strategy.evaluate_gate(short_df, {})
+        assert gate["passed"] is False
 
-    def test_fresh_candles_calculation(self, ma_strategy, bullish_kline):
-        result = ma_strategy.evaluate(bullish_kline, {"min_above": 4, "fresh_threshold": 4})
-        fresh = result["details"]["fresh_candles"]
-        assert isinstance(fresh, int)
-        assert fresh >= 0
-
-    def test_to_dict(self, ma_strategy):
-        d = ma_strategy.to_dict()
-        assert "name" in d
-        assert "description" in d
+    def test_to_dict(self, combo_strategy):
+        d = combo_strategy.to_dict()
+        assert d["name"] == "ma_combo"
         assert "params_schema" in d
+        assert d["dual_timeframe"] is True

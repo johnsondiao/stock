@@ -37,13 +37,13 @@ class TestStrategyEndpoints:
         assert resp.status_code == 200
         data = resp.json()
         assert "strategies" in data
-        assert len(data["strategies"]) >= 2
+        assert len(data["strategies"]) >= 1
 
     def test_get_strategy(self, client):
-        resp = client.get("/api/strategy/ma_bull")
+        resp = client.get("/api/strategy/ma_combo")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["name"] == "ma_bull"
+        assert data["name"] == "ma_combo"
         assert "params_schema" in data
 
     def test_get_strategy_not_found(self, client):
@@ -51,7 +51,7 @@ class TestStrategyEndpoints:
         assert resp.status_code == 404
 
     def test_get_strategy_schema(self, client):
-        resp = client.get("/api/strategy/ma_bull/schema")
+        resp = client.get("/api/strategy/ma_combo/schema")
         assert resp.status_code == 200
         data = resp.json()
         assert "params_schema" in data
@@ -77,7 +77,7 @@ class TestScreenEndpoints:
 
     def test_start_screen_valid(self, client):
         resp = client.post("/api/screen", json={
-            "strategy": "ma_bull",
+            "strategy": "ma_combo",
             "params": {"min_above": 4},
         })
         assert resp.status_code == 200
