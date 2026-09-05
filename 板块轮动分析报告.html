@@ -1,0 +1,108 @@
+<!DOCTYPE html><html lang="zh-CN"><head>
+<meta charset="utf-8"><style>
+@page { size: A4; margin: 18mm 15mm; }
+* { box-sizing: border-box; }
+body { font-family: "Microsoft YaHei", "SimHei", sans-serif; font-size: 10.5pt;
+       line-height: 1.65; color: #1a2332; max-width: 100%; }
+.cover { page-break-after: always; padding-top: 120px; text-align: center; }
+.cover h1 { font-size: 26pt; color: #0b3d91; border: none; margin-bottom: 8px; }
+.cover .sub { font-size: 13pt; color: #556; margin-top: 18px; }
+.cover .meta { margin-top: 70px; font-size: 10.5pt; color: #778;
+               border-top: 1px solid #ccd; display: inline-block; padding-top: 12px; }
+h1 { font-size: 17pt; color: #0b3d91; border-bottom: 3px solid #0b3d91;
+     padding-bottom: 6px; margin-top: 26px; page-break-after: avoid; }
+h2 { font-size: 13.5pt; color: #0b3d91; margin-top: 22px;
+     border-left: 5px solid #2f6fdb; padding-left: 10px; page-break-after: avoid; }
+h3 { font-size: 11.5pt; color: #1d4f91; margin-top: 16px; page-break-after: avoid; }
+table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 9.5pt;
+        page-break-inside: avoid; }
+th { background: #0b3d91; color: #fff; padding: 6px 8px; text-align: left; }
+td { border: 1px solid #c8d2e0; padding: 5px 8px; }
+tr:nth-child(even) td { background: #f2f6fc; }
+code { font-family: Consolas, monospace; background: #eef2f8; padding: 1px 5px;
+       border-radius: 3px; font-size: 9.5pt; color: #b03060; }
+pre { background: #0e1626; color: #d7e3f4; padding: 12px 14px; border-radius: 6px;
+      font-size: 9pt; line-height: 1.5; overflow-x: hidden; page-break-inside: avoid; }
+pre code { background: none; color: inherit; padding: 0; }
+blockquote { border-left: 4px solid #f0a830; background: #fff8ec; margin: 10px 0;
+             padding: 8px 14px; color: #5c4a1e; page-break-inside: avoid; }
+hr { border: none; border-top: 1px dashed #aab; margin: 18px 0; }
+ul, ol { padding-left: 22px; }
+li { margin: 3px 0; }
+strong { color: #0b3d91; }
+.section { page-break-before: always; }
+</style></head><body>
+
+<div class="cover">
+  <h1>A股板块轮动分析报告</h1>
+  <div class="sub">基于 ma_combo 多周期均线共振策略的信号回放</div>
+  <div class="meta">
+    分析区间 2025-01 ~ 2026-08（87周） · 49个行业板块 · 2161只主板股票<br>
+    生成日期 2026-09-01 · 数据源: 本地SQLite全市场K线 + 新浪行业分类
+  </div>
+</div>
+
+<div class="section"><h1>第一部分 轮动规律分析</h1><p><strong>分析区间</strong>: 2025-01-06 ~ 2026-08-31（87 周）</p>
+<p><strong>数据来源</strong>: 本地 SQLite 全市场日线（3281 只，2024-06 起预热）+ 60 分钟线（3297 只，2026-01 起）</p>
+<p><strong>行业分类</strong>: 新浪行业分类，49 个板块，覆盖 2161/3281 只（65.9%）</p>
+<h2>方法</h2>
+<ol><li><strong>信号回放</strong>（忠实于 ma_combo 闸门逻辑）：</li></ol>
+<ul><li>日线信号：MA12 上穿 MA60 金叉后 3 日内 + 收盘站上快慢线（≈闸门 C + 入场）</li><li>小时信号：MA24 上穿 MA60 金叉后 8 根（约 2 日）内 + 收盘站上快慢线（≈闸门 A+B）</li><li>合计：日线信号 13,465 条，小时信号 26,963 条</li></ul>
+<ol><li><strong>周度信号密度矩阵</strong>：每周每板块「发信号股票数 / 板块总股数」→ 49 板块 × 87 周</li><li><strong>规律检验</strong>：持续性、横截面预测、领先-滞后传导</li></ol>
+<h2>结论一：信号密度本身无预测力（重要警示）</h2>
+<table><tr><th>检验</th><th>结果</th></tr><tr><td>本周信号密度 与 下周板块收益 相关系数</td><td><strong>0.024</strong>（≈0）</td></tr><tr><td>高密度组（928 样本）下周平均收益</td><td>+0.01%</td></tr><tr><td>低密度组（889 样本）下周平均收益</td><td>+0.05%</td></tr></table>
+<p><strong>金叉是滞后信号</strong>：密度高企时板块涨幅已兑现，"追刚冒头的密度尖峰" 没有超额收益，甚至轻微吃亏。</p>
+<h2>结论二：热点有明显持续性 —— "强者恒强" 1-2 周</h2>
+<table><tr><th>检验</th><th>结果</th></tr><tr><td>板块密度 lag-1 自相关</td><td><strong>0.505</strong></td></tr><tr><td>相邻两周 Top5 板块重叠数</td><td><strong>2.60/5</strong>（随机基线 0.51，高 5 倍）</td></tr><tr><td>本周密度排名 → 下周密度变化 Spearman</td><td><strong>+0.408</strong>（持续升温）</td></tr><tr><td>密度 Top3 连续驻留</td><td>平均仅 1.2 周，最长 3 周</td></tr></table>
+<p><strong>解读</strong>：热点板块的"成员集合"会延续 1-2 周（信号仍在扩散），但<strong>排名顺序每周洗牌</strong>。</p>
+<p>实操含义：<strong>已经热起来的板块可以再看 1-2 周，但不指望它蝉联榜首；榜首易主正是轮动信号。</strong></p>
+<h2>结论三：轮动节奏与市场环境强相关</h2>
+<p>87 周可划分为三个阶段：</p>
+<table><tr><th>阶段</th><th>区间</th><th>特征</th></tr><tr><td>① 熊市/震荡</td><td>2025-01 ~ 08</td><td>信号稀疏（密度多 &lt;5%），热点零散孤立（石油、钢铁、船舶单周脉冲），<strong>无有效轮动</strong></td></tr><tr><td>② 结构牛</td><td>2025-09 ~ 2026-05</td><td><strong>轮动最清晰</strong>，每 1-3 周一个主线，见下方链条</td></tr><tr><td>③ 全面牛市</td><td>2026-06 ~ 08</td><td>9 个极端普涨周（密度 &gt;200%，最高 420%），全板块共振，<strong>轮动信号失去区分度</strong></td></tr></table>
+<p>阶段②的典型轮动链（按周推进）：</p>
+<pre><code>2025-09  商业百货/石油/公路桥梁 → 玻璃/印刷包装
+2025-10  煤炭 → 电力 → 供水供气          （上游能源沿链传导）
+2025-11  公路桥梁/综合 → 摩托车/农药化肥/生物制药 → 家具/商业百货
+2025-12  飞机制造连热3周 → 酒店旅游/汽车
+2026-01  化纤/有色 → 船舶+飞机制造（军工重器）→ 电力 → 水泥/钢铁（周期）
+2026-02  公路桥梁/煤炭 → 船舶/家具
+2026-03  摩托车/电力 → 开发区 → 金融/玻璃
+2026-04  家电/生物制药 → 化纤/家具/酒店旅游
+2026-05  纺织机械/有色 → 供水供气/电力 → 开发区/家电</code></pre>
+<h2>结论四：存在可识别的领先-滞后传导链</h2>
+<p>跨板块相关分析发现成体系的传导路径（lag-1 相关系数 0.85+）：</p>
+<ul><li><strong>上游资源 → 中下游</strong>：石油 → 有色金属（0.852）、石油 → 发电设备（0.880）、农林牧渔 → 农药化肥（0.871）/ 化工（0.854）</li><li><strong>消费 → 制造/周期</strong>：酿酒 → 环保（0.845）→ 房地产（0.773）→ 建筑建材（0.744）→ 机械（0.745）（lag 2 周）；酿酒 → 金融（0.737）（lag 3 周）</li><li><strong>周期 → 成长</strong>：钢铁 → 有色金属（0.753）→ 电子器件（0.751）（lag 2 周）</li></ul>
+<p><strong>规律</strong>：轮动往往沿"上游涨价 → 产业链中游 → 下游消费/金融"的基本面逻辑展开，滞后 1-3 周。</p>
+<h2>可落地的用法</h2>
+<ol><li><strong>不要</strong>用单周密度尖峰追新热点（相关 0.024，无效）。</li><li><strong>要</strong>把密度当作"确认器"：当 ma_combo 实时选股结果中某板块出现 ≥3 只共振股，且该板块已连续 2 周在密度榜上，视为有效主线。</li><li>关注传导链的下一站：如"煤炭→电力→供水供气"、"石油→有色"、"酿酒→地产链"，上游板块密度登顶后 1-2 周，重点盯下游关联板块的金叉萌芽。</li><li>极端普涨周（密度 &gt;200%）轮动分析失效，此时应降低仓位维度、看全市场广度而非板块选择。</li></ol>
+<h2>局限性</h2>
+<ul><li>样本期仅 20 个月（全市场日线 2025 起、小时线 2026 起），传导链结论需更长数据验证；</li><li>行业映射覆盖率 65.9%，次新股未归类；</li><li>新浪行业分类较粗（49 类），"综合行业""开发区"等类别成分杂；</li><li>板块收益为等权日收益近似，未考虑市值加权。</li></ul>
+<hr>
+<p>产物文件：<code>rotation_density.csv</code>（密度矩阵）、<code>rotation_stats.txt</code>（每周 Top3）、</p>
+<p><code>rotation_deep.txt</code>（传导链）、<code>rotation_streaks.txt</code>（驻留统计）、</p>
+<p><code>industry_map.csv</code>（股票→板块映射）</p></div>
+<div class="section"><h1>第二部分 当前轮次判断（2026-08-31）</h1><p><strong>数据截至</strong>: 2026-08-31 收盘（今日日线/小时线已完结）</p>
+<p><strong>口径</strong>: 小时线信号密度 = 当日信号股数 / 板块总股数；与周报同源</p>
+<h2>一、市场状态：全面普涨仍在持续，未见衰竭</h2>
+<table><tr><th>日期</th><th>信号股总数</th><th>观察</th></tr><tr><td>08-17</td><td>83</td><td>局部热点（船舶）</td></tr><tr><td>08-21</td><td>85</td><td>金融/石油启动</td></tr><tr><td>08-25</td><td>310</td><td>扩散加速</td></tr><tr><td>08-26</td><td>431</td><td>基建加入</td></tr><tr><td>08-27</td><td>695</td><td>普涨确立</td></tr><tr><td>08-28</td><td>1,146</td><td>全面开花</td></tr><tr><td><strong>08-31</strong></td><td><strong>1,161</strong></td><td><strong>广度仍在高位、微增 → 普涨未衰竭</strong></td></tr></table>
+<blockquote>注意：目前处于报告中的「阶段③ 全面牛市」，密度 &gt;100% 时轮动区分度下降，<br>以下判断置信度低于结构性行情阶段。</blockquote>
+<h2>二、当前这轮（进行中）：金融接棒 + 基建周期扩散</h2>
+<p>对比 8/28 → 8/31 密度榜前排的变化：</p>
+<table><tr><th>板块</th><th>08-28</th><th>08-31</th><th>状态</th></tr><tr><td>公路桥梁</td><td>180%</td><td>90%</td><td>退潮中（仍居前排）</td></tr><tr><td>水泥行业</td><td>138%</td><td>92%</td><td>退潮中</td></tr><tr><td>物资外贸</td><td>110%</td><td><strong>100%</strong></td><td>高位持续</td></tr><tr><td>钢铁行业</td><td>105%</td><td>88%</td><td>退潮中</td></tr><tr><td>金融行业</td><td>94%</td><td><strong>127% ↑ 登顶</strong></td><td><strong>新接棒主线</strong></td></tr><tr><td>石油行业</td><td>~50%</td><td>已出前排</td><td>已退场（8/25 见顶 108%）</td></tr></table>
+<p><strong>当前主线归纳</strong>：</p>
+<ol><li><strong>金融</strong> —— 本轮新晋榜首，且符合「酿酒/纺织 → 金融」的滞后 2-3 周传导规律（消费类板块 8 月中下旬先行），属于<strong>补涨接棒</strong>性质</li><li><strong>基建/周期（公路桥梁-水泥-钢铁-物资外贸）</strong> —— 8/27 启动的主升浪正在退潮，只剩尾部惯性</li><li><strong>今日实时选股的板块分布印证</strong>：有色金属 3 只（驰宏锌锗/西部矿业/江西铜业，全部 strong_buy 98 分）+ 物资外贸 1 只（上海物贸）+ 电子信息 2 只</li></ol>
+<h2>三、下一轮候选（按证据强度排序）</h2>
+<h3>候选 1：有色金属 ★★★（证据最强）</h3>
+<ul><li><strong>传导链</strong>：历史验证「石油 → 有色」滞后约 1 周（相关 0.852）。石油 8/25 见顶回落，时间窗口正好对上</li><li><strong>实时印证</strong>：今日选股 14 只中有色独占 3 只，且全部是最高档信号（98 分、双周期共振）</li><li><strong>配合</strong>：「钢铁 → 有色」链也在发挥作用（钢铁 8/27-28 峰值后向有色扩散）</li></ul>
+<h3>候选 2：金融（延续/扩散）★★</h3>
+<ul><li>刚登顶，按「热点持续 1-2 周」规律还有惯性；但金融是滞后补涨板块，<strong>上行空间通常小于先行板块</strong>，适合已经在场者持有而非新进场</li></ul>
+<h3>候选 3：基建周期链二次扩散 ★</h3>
+<ul><li>物资外贸/水泥/钢铁若本周止跌回稳，可能沿「周期 → 成长」链向<strong>电子器件/电子信息</strong>传导（今日选股已现中远海科、东软集团 2 只）</li></ul>
+<h2>四、本周观察清单（验证信号）</h2>
+<table><tr><th>观察点</th><th>成立条件</th><th>含义</th></tr><tr><td>有色密度升至板块前 3</td><td>明日密度榜出现 有色 ≥60%</td><td>候选 1 确认，主线切换</td></tr><tr><td>信号股总数跌破 900</td><td>广度收缩 &gt;20%</td><td>普涨退潮，切换为结构性轮动模式</td></tr><tr><td>金融密度维持 &gt;100% 两天</td><td>持续性强</td><td>候选 2 成立</td></tr><tr><td>新金叉分布集中于有色/电子</td><td>当日新金叉板块聚集</td><td>下一轮萌芽确认</td></tr></table>
+<h2>五、操作提示</h2>
+<ul><li>当前普涨高位，<strong>不建议追 8/28 峰值板块（公路桥梁/水泥/钢铁）</strong>——密度已在退潮，且「追尖峰无效」（相关 0.024）</li><li>有色的 3 只共振股（驰宏锌锗 600497、西部矿业 601168、江西铜业 600362）是今日最值得跟踪的下一轮线索；其中江西铜业今日 -2.12% 回调中仍保持双周期多头，符合「回调低吸」形态</li><li>若明日广度（信号股总数）明显收缩，立即降低仓位预期，普涨结束后的轮动节奏会加快（历史平均热点驻留仅 1.2 周）</li></ul>
+<hr>
+<p>*依据文件：<code>rotation_density.csv</code>、<code>current_round.txt</code>、<code>板块轮动分析报告.md</code>；</p>
+<p>生成于 2026-08-31 收盘后，下一交易日开盘前建议用实时选股复核。*</p></div>
+</body></html>

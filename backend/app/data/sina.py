@@ -166,6 +166,59 @@ class SinaSource(DataSource):
             "pb": 0,
         }
 
+    def get_fundamentals(self, max_retries: int = 3) -> pd.DataFrame:
+        """
+        拉取全市场估值数据 (PE/PB/总市值)
+        数据源: 新浪节点行情接口 (hs_a 节点, 含创业板/科创板, 由调用方过滤)
+        每页100条约56页, 仅每日开盘后刷新一次, 用于基本面预筛
+        """
+        limiter = get_rate_limiter()
+        url = ("http://vip.stock.finance.sina.com.cn/quotes_service/api/"
+               "json_v2.php/Market_Center.getHQNodeData")
+
+        records: list[dict] = []
+        for attempt in range(max_retries):
+            try:
+                records = []
+                page = 1
+                while page <= 80:  # 安全上限, 正常约56页结束
+                    limiter.acquire()
+                    r = requests.get(url, params={
+                        "page": page, "num": 100, "sort": "symbol", "asc": 1,
+                        "node": "hs_a", "symbol": "", "_s_r_a": "page",
+                    }, headers=_HEADERS, timeout=15)
+                    r.raise_for_status()
+                    text = r.text.strip()
+                    if text in ("null", "", "[]"):
+                        break
+                    # 新浪返回非标准JSON(键无引号), 修正后解析
+                    fixed = re.sub(r'([{,])(\w+):', r'\1"\2":', text)
+                    items = json.loads(fixed)
+                    for it in items:
+                        records.append({
+                            "code": str(it["code"]).zfill(6),
+                            "pe": float(it.get("per") or 0),
+                            "pb": float(it.get("pb") or 0),
+                            "total_mv": float(it.get("mktcap") or 0),  # 万元
+                        })
+                    if len(items) < 100:
+                        break
+                    page += 1
+                break
+            except Exception as e:
+                logger.warning("新浪估值数据拉取失败 (第 %d 次): %s",
+                               attempt + 1, e)
+                if attempt < max_retries - 1:
+                    time.sleep(5 * (attempt + 1))
+                else:
+                    raise
+
+        df = pd.DataFrame(records)
+        if not df.empty:
+            df = df.drop_duplicates("code").reset_index(drop=True)
+        logger.info("新浪: 获取估值数据 %d 只股票", len(df))
+        return df
+
     def get_kline(self, code: str, period: str = "60", count: int = 300, max_retries: int = 3) -> pd.DataFrame:
         """
         获取小时级别K线数据

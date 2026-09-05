@@ -69,6 +69,15 @@ CREATE TABLE IF NOT EXISTS realtime_snapshot (
     updated_at  TEXT
 );
 
+-- 基本面估值(每日从新浪节点接口刷新一次)
+CREATE TABLE IF NOT EXISTS fundamental (
+    code        TEXT PRIMARY KEY,
+    pe          REAL,
+    pb          REAL,
+    total_mv    REAL,
+    updated_at  TEXT
+);
+
 -- 选股任务记录
 CREATE TABLE IF NOT EXISTS screen_task (
     id          TEXT PRIMARY KEY,

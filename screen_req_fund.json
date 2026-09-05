@@ -1,0 +1,1 @@
+{"strategy": "ma_combo", "params": {}, "prefilter": {"max_price": 20, "pe_min": 10, "pe_max": 1000}}

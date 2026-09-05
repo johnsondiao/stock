@@ -79,6 +79,11 @@ def current_hourly_slot(now: datetime) -> datetime | None:
     return None
 
 
+def current_daily_slot(now: datetime) -> datetime:
+    """当日日线K线时间戳 (00:00:00)"""
+    return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 # ── 快照修补正在形成的K线 ────────────────────────────────
 
 def _patch_table(table: str, code: str, slot: datetime,
@@ -120,10 +125,58 @@ def _patch_table(table: str, code: str, slot: datetime,
         # last.date > slot: 缓存数据更新, 跳过
 
 
+def patch_daily(snapshot: pd.DataFrame, slot: datetime) -> int:
+    """
+    用行情快照的真实 OHLC 批量维护当日日线 (单事务, 零 API 请求)
+
+    快照自带当日 open/high/low/price/volume, 无需像分钟线那样从单一价格推算,
+    因此盘中每 5 分钟刷新快照即可把当日日线维护到准实时。
+    返回写入股票数。
+    """
+    slot_str = slot.strftime("%Y-%m-%d 00:00:00")
+    payload = []
+
+    for _, row in snapshot.iterrows():
+        close = float(row.get("price") or 0)
+        if close <= 0:
+            continue
+        open_ = float(row.get("open") or 0)
+        high = float(row.get("high") or 0)
+        low = float(row.get("low") or 0)
+        volume = float(row.get("volume") or 0)
+
+        # 集合竞价阶段行情源可能缺失 OHLC, 用最新价兜底
+        if open_ <= 0:
+            open_ = close
+        if high <= 0:
+            high = max(open_, close)
+        if low <= 0:
+            low = min(open_, close)
+
+        payload.append((row["code"], slot_str,
+                        open_, high, low, close, volume))
+
+    if not payload:
+        return 0
+
+    with get_db() as conn:
+        conn.executemany(
+            "INSERT INTO daily_kline "
+            "(code, date, open, high, low, close, volume, amount) "
+            "VALUES (?,?,?,?,?,?,?,0) "
+            "ON CONFLICT(code, date) DO UPDATE SET "
+            "open=excluded.open, high=excluded.high, low=excluded.low, "
+            "close=excluded.close, volume=excluded.volume",
+            payload,
+        )
+    return len(payload)
+
+
 def patch_forming_candles(snapshot: pd.DataFrame, now: datetime) -> int:
     """用行情快照修补全部缓存股票的当前形成中K线, 返回修补股票数"""
     slot5 = current_5min_slot(now)
     slot_h = current_hourly_slot(now)
+    slot_d = current_daily_slot(now)
     if slot5 is None and slot_h is None:
         return 0
 
@@ -139,6 +192,9 @@ def patch_forming_candles(snapshot: pd.DataFrame, now: datetime) -> int:
         if slot_h is not None:
             _patch_table("hourly_kline", code, slot_h, price, day_volume)
         patched += 1
+
+    # 日线单事务批量写入 (快照自带 OHLC, 精度高于分钟线推算)
+    patch_daily(snapshot, slot_d)
     return patched
 
 
@@ -146,6 +202,21 @@ def patch_forming_candles(snapshot: pd.DataFrame, now: datetime) -> int:
 
 _roll_codes: list[str] = []
 _roll_pos: int = 0
+_daily_checked_day = None      # 每日日线自检的去重标记
+
+
+def _refresh_fundamentals(provider):
+    """每日一次: 拉取全市场估值数据 (PE/PB) 供基本面预筛使用"""
+    from app.data import cache
+    today = datetime.now().strftime("%Y-%m-%d")
+    if cache.fundamental_date() == today:
+        return
+    try:
+        df = provider._sina.get_fundamentals()
+        if not df.empty:
+            cache.save_fundamental(df)
+    except Exception as e:
+        logger.warning("估值数据刷新失败(明日重试): %s", e)
 
 
 def _roll_refresh(provider):
@@ -182,6 +253,22 @@ _stop_event = threading.Event()
 _thread: threading.Thread | None = None
 
 
+def _ensure_daily_ok(now: datetime) -> None:
+    """
+    每日首次进入交易时段时, 校验日线是否落后并补齐整段缺口。
+    正常情况下库内已是当日数据, 此检查零 API 开销。
+    """
+    global _daily_checked_day
+    if _daily_checked_day == now.date():
+        return
+    _daily_checked_day = now.date()
+    try:
+        from app.data.daily_backfill import ensure_daily_fresh
+        ensure_daily_fresh(target_date=now.strftime("%Y-%m-%d"))
+    except Exception as e:
+        logger.warning("日线自检失败(本日不再重试): %s", e)
+
+
 def _loop():
     provider = get_provider()
     logged_idle_day = None
@@ -196,9 +283,14 @@ def _loop():
             _stop_event.wait(_next_wakeup(now))
             continue
 
+        # 0. 每日一次: 日线完整性自检 (补齐跨周末/宕机造成的缺口)
+        _ensure_daily_ok(now)
+
         try:
             # 1. 刷新全市场行情快照
             snapshot = provider.get_all_stocks(force_refresh=True)
+            # 1.5 每日刷新一次估值数据 (约56页请求, 限流安全)
+            _refresh_fundamentals(provider)
             if not snapshot.empty:
                 # 2. 用快照修补正在形成的K线（零请求）
                 n = patch_forming_candles(snapshot, datetime.now())
@@ -211,12 +303,29 @@ def _loop():
         _stop_event.wait(_next_wakeup(datetime.now()))
 
 
+def _startup_daily_check():
+    """
+    服务启动时的日线自检: 补齐跨周末/宕机留下的历史缺口。
+    当日日线由盘中 patch_daily 用快照维护, 这里只保证历史连续。
+    """
+    global _daily_checked_day
+    try:
+        from app.data.daily_backfill import ensure_daily_fresh
+        ensure_daily_fresh()
+        _daily_checked_day = datetime.now().date()
+    except Exception as e:
+        logger.warning("启动日线自检失败(开盘后由主循环重试): %s", e)
+
+
 def start():
     """启动后台数据更新线程"""
     global _thread
     if _thread is not None and _thread.is_alive():
         return
     _stop_event.clear()
+    # 启动即自检日线历史完整性, 后台线程避免阻塞服务启动
+    threading.Thread(target=_startup_daily_check,
+                     name="daily-backfill", daemon=True).start()
     _thread = threading.Thread(target=_loop, name="data-updater", daemon=True)
     _thread.start()
     logger.info("后台数据更新服务已启动（开盘时段每5分钟刷新）")

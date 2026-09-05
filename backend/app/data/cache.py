@@ -121,6 +121,51 @@ def load_snapshot() -> pd.DataFrame:
     return df
 
 
+# ── 基本面估值缓存 ────────────────────────────────────
+
+def save_fundamental(df: pd.DataFrame):
+    """保存全市场估值数据到 SQLite (全量替换)"""
+    if df.empty:
+        return
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    with get_db() as conn:
+        conn.execute("DELETE FROM fundamental")
+        conn.executemany(
+            "INSERT INTO fundamental (code, pe, pb, total_mv, updated_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [(r["code"], r["pe"], r["pb"], r["total_mv"], now)
+             for _, r in df.iterrows()]
+        )
+    logger.info("估值数据已保存: %d 只股票", len(df))
+
+
+def load_fundamental() -> pd.DataFrame:
+    """加载估值数据"""
+    with get_db() as conn:
+        return pd.read_sql_query("SELECT * FROM fundamental", conn)
+
+
+def fundamental_date() -> str | None:
+    """估值数据刷新日期 (YYYY-MM-DD), 未刷新返回 None"""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT MAX(updated_at) as t FROM fundamental").fetchone()
+    return row["t"][:10] if row and row["t"] else None
+
+
+def merge_fundamental(snapshot: pd.DataFrame) -> pd.DataFrame:
+    """将估值数据合并进快照 (pe/pb/total_mv 覆盖填充)"""
+    fund = load_fundamental()
+    if fund.empty:
+        return snapshot
+    merged = snapshot.merge(fund[["code", "pe", "pb", "total_mv"]],
+                            on="code", how="left", suffixes=("", "_f"))
+    for col in ("pe", "pb", "total_mv"):
+        merged[col] = merged[f"{col}_f"].fillna(merged[col]).fillna(0)
+        merged = merged.drop(columns=[f"{col}_f"])
+    return merged
+
+
 def is_snapshot_fresh() -> bool:
     """检查行情快照是否在有效期内"""
     with get_db() as conn:

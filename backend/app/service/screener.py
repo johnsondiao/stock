@@ -29,7 +29,8 @@ def run_screen(strategy_name: str, params: dict,
 
     :param strategy_name: 策略名称
     :param params: 策略参数
-    :param prefilter: 预筛条件 {min_price, max_price, exclude_st}
+    :param prefilter: 预筛条件 {min_price, max_price, exclude_st,
+                       pe_min, pe_max, pb_max, min_mv, max_mv}
     :return: {task_id, total_scanned, matched_count, results, ...}
     """
     strategy = strategy_registry.get(strategy_name)
@@ -148,6 +149,12 @@ def _apply_prefilter(df: pd.DataFrame, prefilter: dict) -> pd.DataFrame:
     """
     mask = pd.Series(True, index=df.index)
 
+    # 基本面条件: 需要估值数据, 按需合并 (无估值数据不影响其他条件)
+    need_fund = any(k in prefilter for k in
+                    ("pe_min", "pe_max", "pb_max", "min_mv", "max_mv"))
+    if need_fund:
+        df = cache.merge_fundamental(df)
+
     # 排除 ST 和退市股
     if prefilter.get("exclude_st", True):
         if "name" in df.columns:
@@ -160,6 +167,25 @@ def _apply_prefilter(df: pd.DataFrame, prefilter: dict) -> pd.DataFrame:
     max_price = prefilter.get("max_price")
     if max_price:
         mask &= df["price"] <= max_price
+
+    # 估值区间 (PE 按东财口径: 下限>0天然排除亏损股)
+    if "pe" in df.columns:
+        pe_min = prefilter.get("pe_min")
+        if pe_min:
+            mask &= df["pe"] >= pe_min
+        pe_max = prefilter.get("pe_max")
+        if pe_max:
+            mask &= (df["pe"] > 0) & (df["pe"] <= pe_max)
+        pb_max = prefilter.get("pb_max")
+        if pb_max:
+            mask &= (df["pb"] > 0) & (df["pb"] <= pb_max)
+        # 市值区间(亿元), 接口单位为万元: 1亿 = 10000万
+        min_mv = prefilter.get("min_mv")
+        if min_mv:
+            mask &= df["total_mv"] >= min_mv * 1e4
+        max_mv = prefilter.get("max_mv")
+        if max_mv:
+            mask &= df["total_mv"] <= max_mv * 1e4
 
     # 排除停牌: 只在交易时间过滤（有成交量数据时）
     if "volume" in df.columns:

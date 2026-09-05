@@ -1,0 +1,8 @@
+﻿2026-09-03 19:14:13 [INFO] app.service.screener: [45c80f24f3df] 预筛选后: 1562 只候选 (排除 1735 只)
+2026-09-03 19:14:16 [INFO] app.service.fast_combo: 快速评估: 60分钟闸门通过 75
+2026-09-03 19:14:16 [INFO] app.service.fast_combo: 快速评估: 日线趋势确认 24, 待补日线 0
+2026-09-03 19:14:16 [INFO] app.service.fast_combo: 快速评估完成: 命中 4 只, 待补数据 0 只
+2026-09-03 19:14:16 [INFO] app.service.screener: [45c80f24f3df] 快速通道: 命中 4 只, 待补数据 0 只
+2026-09-03 19:14:16 [INFO] app.service.screener: [45c80f24f3df] 选股完成: 扫描 1562 只, 匹配 4 只, 错误 0
+2026-09-03 19:14:16 [INFO] api: POST /api/screen -> 200 (2474.6ms)
+2026-09-04 00:00:04 [INFO] data_updater: 当前非交易时段, 数据更新服务待命

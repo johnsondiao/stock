@@ -66,3 +66,9 @@ backend/run_ma_screen.py
 run_screen.py
 charts/
 /src/
+
+# 本地数据库备份 (500MB+, 避免占用 LFS 配额)
+backup/
+
+# 工具配置
+.qoder/
