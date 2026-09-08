@@ -14,13 +14,20 @@
 
 ## 数据架构
 
-- 主库 `backend/data/stock.db`(约 530MB), 表: `daily_kline` / `hourly_kline` /
-  `kline_5min` / `realtime_snapshot` / `fundamental` / `screen_task`
+- 主库 `backend/data/stock.db`, 表: `daily_kline` / `hourly_kline` /
+  `kline_5min` / `kline_15min` / `realtime_snapshot` / `fundamental` /
+  `fund_flow` / `screen_task`
+- `daily_kline` 的 `amount` 字段**全是 0, 不可用**(别拿它算成交额)
+- `fund_flow` 主力资金流(新浪, 2024-08起, 每只500交易日): 下载器
+  `fundflow_download.py`, 增量用法 `python fundflow_download.py 60`
 - 日线的 `date` 统一格式 `YYYY-MM-DD 00:00:00`, 主键 `(code, date)`, 可安全 upsert
 - 数据源为新浪: 实时行情 `hq.sinajs.cn`(批量500只/次),
   K线 `vip.stock.finance.sina.com.cn` 的 `CN_MarketData.getKLineData`(scale=5/60/240)
 - 全局限流器 30 请求/分钟; 日线全市场补齐若走限流器需 110 分钟,
   改用并发池约 9 分钟(实测 6~10 只/秒, 并发 8, 零失败)
+- **东方财富接口慎用**: `push2his.eastmoney.com` 连发数次后整个域名
+  RemoteDisconnected(要等很久才恢复), 且个股资金流历史上限仅 120 根。
+  新浪 vip.stock.finance.sina.com.cn 更稳、历史更长(500根), 优先用新浪
 
 ## 日线维护机制 (2026-09-05 修复后)
 
