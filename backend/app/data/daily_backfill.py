@@ -50,6 +50,40 @@ def latest_daily_date() -> str | None:
     return row[0][:10] if row and row[0] else None
 
 
+def day_coverage(day: str) -> int:
+    """daily_kline 中某交易日(YYYY-MM-DD)的覆盖只数"""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM daily_kline WHERE substr(date,1,10)=?",
+            (day[:10],)).fetchone()
+    return row[0] if row else 0
+
+
+MIN_COVERAGE = 2000        # 低于此数视为该交易日不完整(全市场约3200只)
+
+
+def recent_incomplete_days(min_coverage: int = MIN_COVERAGE,
+                           lookback: int = 15) -> list[str]:
+    """
+    找出昨天及之前、daily_kline 覆盖不足的交易日。
+
+    以 hourly_kline 的日期集合为"交易日参考"(它由滚动刷新维护,
+    实践中始终完整)。排除今天: 当日日线由盘中 patch_daily 渐进写入,
+    收盘前覆盖少是正常的, 不能据此触发补齐。
+
+    背景: 仅比较最新日期不够 —— 盘中 patch_daily 曾只写入 2 只股票,
+    使 latest 日期前进但数据是空的, 导致连续多日静默缺口。
+    """
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT DISTINCT substr(date,1,10) FROM hourly_kline "
+            "WHERE date >= date('now', ?) ORDER BY 1",
+            (f"-{lookback} days",)).fetchall()
+    today = time.strftime("%Y-%m-%d")
+    return [d for (d,) in rows
+            if d < today and day_coverage(d) < min_coverage]
+
+
 def cached_codes() -> list[str]:
     with get_db() as conn:
         return [r[0] for r in conn.execute(
@@ -167,12 +201,18 @@ def ensure_daily_fresh(target_date: str | None = None,
     try:
         target = target_date or time.strftime("%Y-%m-%d")
         latest = latest_daily_date()
-        if not force and latest and latest >= target:
-            logger.debug("日线已是最新 (%s >= %s), 跳过补齐", latest, target)
+        gaps = recent_incomplete_days()
+        if not force and latest and latest >= target and not gaps:
+            logger.debug("日线已是最新 (%s >= %s, 近期无缺口), 跳过补齐",
+                         latest, target)
             return False
 
-        logger.warning("日线落后: 库中最新 %s, 目标 %s → 触发补齐",
-                       latest, target)
+        if gaps:
+            logger.warning("日线存在覆盖缺口 %s (库中最新 %s, 目标 %s)"
+                           " → 触发补齐", gaps, latest, target)
+        else:
+            logger.warning("日线落后: 库中最新 %s, 目标 %s → 触发补齐",
+                           latest, target)
         codes = cached_codes()
         if not codes:
             logger.error("daily_kline 为空, 无法补齐(请先运行 download_data.py)")

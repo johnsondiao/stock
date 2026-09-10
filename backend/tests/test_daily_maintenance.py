@@ -182,3 +182,57 @@ def test_daily_backfill_detects_gap(monkeypatch):
 
     assert ran is True
     assert captured["codes"] == ["600218"]
+
+
+def test_recent_incomplete_days_uses_hourly_calendar(monkeypatch):
+    """hourly 有某交易日但 daily 覆盖不足 → 检出缺口(9/7 事故回归)"""
+    from datetime import datetime, timedelta
+    import app.data.daily_backfill as bf
+
+    day3 = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+    with get_db() as conn:
+        # 当日 hourly 完整(以 3 天前为"历史交易日")
+        conn.execute(
+            "INSERT INTO hourly_kline (code, date, open, high, low, close, "
+            "volume) VALUES ('600218', ?, 7, 7.2, 6.9, 7.1, 100)",
+            (f"{day3} 10:30:00",))
+        # daily 只有 1 只 → 覆盖不足
+        conn.execute(
+            "INSERT INTO daily_kline (code, date, open, high, low, close, "
+            "volume, amount) VALUES ('600218', ?, 7, 7.2, 6.9, 7.1, 100, 0)",
+            (f"{day3} 00:00:00",))
+
+    gaps = bf.recent_incomplete_days(min_coverage=2)
+
+    assert gaps == [day3]
+
+
+def test_ensure_fresh_triggers_on_sparse_coverage(monkeypatch):
+    """最新日期已达目标、但存在覆盖缺口时, 仍必须触发补齐(核心回归)"""
+    import app.data.daily_backfill as bf
+
+    _seed("600218")                      # latest=8/31
+    called = []
+    monkeypatch.setattr(bf, "recent_incomplete_days", lambda **kw: ["2026-09-07"])
+    monkeypatch.setattr(bf, "backfill",
+                        lambda *a, **k: called.append(1) or
+                        {"ok": 0, "failed": 0, "rows": 0, "seconds": 0.0})
+
+    ran = bf.ensure_daily_fresh(target_date="2026-08-31")   # latest >= target
+
+    assert ran is True
+    assert called == [1]
+
+
+def test_ensure_fresh_ignores_today_sparse_coverage(monkeypatch):
+    """今天的覆盖少是盘中正常现象, 不得据此触发补齐"""
+    import app.data.daily_backfill as bf
+
+    _seed("600218")
+    called = []
+    monkeypatch.setattr(bf, "backfill", lambda *a, **k: called.append(1))
+
+    ran = bf.ensure_daily_fresh(target_date="2026-08-31")
+
+    assert ran is False
+    assert called == []
