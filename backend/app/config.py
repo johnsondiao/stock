@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     # ── 数据库 ──
     db_path: Path = BASE_DIR / "data" / "stock.db"
+    industry_map_path: Path = BASE_DIR.parent / "industry_map.csv"
 
     # ── 扫描参数（缓存命中时走快车道；API 请求由全局限流器兜底） ──
     scan_max_workers: int = 8         # 并发线程数（读缓存为主，可较高）

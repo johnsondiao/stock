@@ -97,6 +97,17 @@ def run_screen(strategy_name: str, params: dict,
                 import time
                 time.sleep(settings.scan_batch_pause)
 
+    # Step 3.5: 板块成色过滤(板块在涨且齐涨才放行, 被过滤的带原因保留)
+    sector_dropped: list[dict] = []
+    try:
+        from app.strategy.sector_quality import annotate_and_filter
+        results, sector_dropped = annotate_and_filter(results, params)
+        if sector_dropped:
+            logger.info("[%s] 板块成色过滤: 保留 %d, 过滤 %d",
+                        task_id, len(results), len(sector_dropped))
+    except Exception as e:
+        logger.warning("[%s] 板块成色过滤失败(不影响选股): %s", task_id, e)
+
     # Step 4: 排序 + 保存结果（供历史查询）
     results.sort(key=lambda x: x.get("score", 0), reverse=True)
 
@@ -109,6 +120,7 @@ def run_screen(strategy_name: str, params: dict,
         "matched_count": len(results),
         "errors": errors,
         "results": results,
+        "sector_filtered_out": sector_dropped,
         "completed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 
