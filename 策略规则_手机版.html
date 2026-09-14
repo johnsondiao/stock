@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page { size: 100mm 210mm; margin: 7mm 7mm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+    font-size: 10.5pt; line-height: 1.75; color: #222;
+  }
+  .page { page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+
+  h1 { font-size: 17pt; margin: 8mm 0 2mm; line-height: 1.4; }
+  h2 { font-size: 13pt; margin: 5mm 0 2mm; padding-left: 2.5mm;
+       border-left: 1.2mm solid #C62828; }
+  .sub { color: #888; font-size: 9pt; }
+  p { margin: 1.5mm 0; }
+  .lead { font-size: 11.5pt; color: #333; }
+
+  .card { background: #F7F7F7; border-radius: 2mm; padding: 3mm 3.5mm; margin: 2.5mm 0; }
+  .card.red { background: #FDECEA; }
+  .card.green { background: #E8F5E9; }
+  .card.blue { background: #E8F1FD; }
+
+  .step { display: flex; margin: 2mm 0; }
+  .step .no { flex: 0 0 7mm; height: 7mm; border-radius: 50%;
+              background: #C62828; color: #fff; font-weight: 700;
+              text-align: center; line-height: 7mm; font-size: 10pt; }
+  .step .tx { flex: 1; padding-left: 3mm; }
+  .step .tx b { display: block; }
+  .step .tx span { color: #666; font-size: 9.5pt; }
+
+  table { width: 100%; border-collapse: collapse; margin: 2mm 0; font-size: 9.5pt; }
+  th { background: #333; color: #fff; padding: 1.5mm 2mm; text-align: left; font-weight: 500; }
+  td { padding: 1.5mm 2mm; border-bottom: 0.3pt solid #ddd; }
+  tr:nth-child(even) td { background: #FAFAFA; }
+
+  .num { font-weight: 700; color: #C62828; }
+  .numg { font-weight: 700; color: #2E7D32; }
+  .tag { display: inline-block; background: #333; color: #fff; border-radius: 1mm;
+         padding: 0 2mm; font-size: 8.5pt; margin-right: 2mm; }
+  .foot { margin-top: 5mm; padding-top: 2mm; border-top: 0.3pt solid #ccc;
+          color: #999; font-size: 8.5pt; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ 第1页 ═══════════ -->
+<div class="page">
+  <h1>我的选股和卖股规则</h1>
+  <p class="sub">ma_combo 策略完整版 · 2026年9月14日 · 手机阅读版</p>
+
+  <p class="lead">这个策略只做一件事：<b>在市场健康的时候，买进刚开始上涨的股票，
+  跌破了就走。</b>买入要连过三道关，卖出一句话就能说完。</p>
+
+  <h2>买入：三道关，从大到小</h2>
+
+  <div class="card blue">
+    <p><b>第一关 · 先看大盘</b></p>
+    <p>全市场上涨的股票<b>不到一半</b>（低于50%），当天一个都不买。
+    市场整体在跌的时候，再好的个股信号也不买。</p>
+  </div>
+
+  <div class="card blue">
+    <p><b>第二关 · 再看板块</b></p>
+    <p>这只股票所在的板块必须满足两条：</p>
+    <p>① 板块最近5天整体在涨（板块内一半以上的股票是涨的）</p>
+    <p>② 板块内的股票<b>涨得整齐</b>——不是一两只龙头猛拉、
+    其他全趴着不动。</p>
+  </div>
+
+  <div class="card blue">
+    <p><b>第三关 · 最后看个股</b>（四步确认，一步一步收紧）</p>
+    <p>① 小时线：股价站在短期均线和长期均线上方</p>
+    <p>② 小时线：短期均线刚从下往上穿过长期均线（发生在最近8根内）</p>
+    <p>③ 日线：12日均线在60日均线上方（中期趋势向上）</p>
+    <p>④ 5分钟线：短期均线刚从下往上穿过长期均线（最近48根内）——
+    这一步是最终的买入确认</p>
+  </div>
+
+  <p class="foot">三道关全过，才出现在每天的买入名单里。任何一道不过，都不买。</p>
+</div>
+
+<!-- ═══════════ 第2页 ═══════════ -->
+<div class="page">
+  <h1>卖出：一条规则</h1>
+
+  <div class="card red">
+    <p><b>收盘价跌破12日均线 → 第二天开盘卖出。</b></p>
+    <p>盘中跌破不算，只看收盘。当天收盘破了，第二天开盘就卖，不等不抱侥幸。</p>
+  </div>
+
+  <div class="card">
+    <p><b>减仓规则（针对较重仓位）：</b></p>
+    <p>全柴动力这类500股的重仓：收盘跌破7.65（约MA12下方）先减200股，
+    剩下的看12日均线，破了再清。</p>
+    <p>60日均线是最后防线——跌破它说明整个中期趋势没了，必须全清。</p>
+  </div>
+
+  <h2>为什么是这些规则</h2>
+
+  <p>每一条都是用全市场历史数据验证过的，不是拍脑袋：</p>
+
+  <table>
+    <tr><th>规则</th><th>验证结果</th></tr>
+    <tr>
+      <td>大盘不过半不买</td>
+      <td>2万笔回测：大盘弱时买平均<span class="num">亏0.7%</span>，
+      大盘强时买平均<span class="numg">赚0.1~0.2%</span>，
+      大亏的比例也差5个百分点</td>
+    </tr>
+    <tr>
+      <td>只买涨得齐的板块</td>
+      <td>齐涨的板块里，后续真大涨的概率<span class="numg">43%</span>；
+      靠龙头硬拉的只有<span class="num">18%</span></td>
+    </tr>
+    <tr>
+      <td>跌破12日线就走</td>
+      <td>7万次跌破统计：多等一天再卖，
+      <span class="num">63%</span>的情况更亏；等两天确认，
+      大亏（超5%）的比例从13%翻倍到22%。</td>
+    </tr>
+  </table>
+
+  <p class="foot">数据窗口：2025年至今，全市场约3000只股票。</p>
+</div>
+
+<!-- ═══════════ 第3页 ═══════════ -->
+<div class="page">
+  <h1>这套系统的脾气</h1>
+
+  <p>用它之前，先接受它的三个性格：</p>
+
+  <div class="card">
+    <p><b>1. 经常小亏，很少大亏。</b></p>
+    <p>卖出规则决定了每次止损大概亏1%~3%。被洗出去（卖完就涨回来）的情况
+    大约占<span class="num">28%</span>——这是设计内的成本。
+    换来的是：碰上中国出版那种连续暴跌，我们已经在门外了。</p>
+  </div>
+
+  <div class="card">
+    <p><b>2. 大部分时间什么都不做。</b></p>
+    <p>市场弱的时候（比如9月这两周），名单是空的。空仓就是操作。
+    手痒是这套系统最大的敌人。</p>
+  </div>
+
+  <div class="card">
+    <p><b>3. 它不预测，只跟随。</b></p>
+    <p>所有信号都是"这票已经开始涨了"的确认，不是"这票要涨了"的预言。
+    所以买点永远不可能是最低点，卖点也永远不可能在最高点。</p>
+  </div>
+
+  <h2>每天怎么用</h2>
+  <p>① <b>14:45（尾盘）</b>：自动任务会跑一遍系统，给出
+  "持有 / 买 / 卖"清单，照着执行即可</p>
+  <p>② <b>收盘后</b>：看持仓有没有收盘跌破12日均线的，
+  有则<b>第二天开盘卖</b></p>
+  <p>③ 买入名单里的股票，第二天开盘买，单只不超过总资产的15%</p>
+
+  <h2>参数速查</h2>
+  <table>
+    <tr><th>参数</th><th>当前值</th></tr>
+    <tr><td>大盘买入门槛（上涨占比）</td><td>≥ 50%</td></tr>
+    <tr><td>板块离散度要求</td><td>排进全行业最齐的前30%</td></tr>
+    <tr><td>日线趋势确认</td><td>12日均线 &gt; 60日均线</td></tr>
+    <tr><td>小时线金叉窗口</td><td>最近 8 根</td></tr>
+    <tr><td>5分钟金叉窗口</td><td>最近 48 根</td></tr>
+    <tr><td>卖出触发</td><td>收盘 &lt; 12日均线</td></tr>
+  </table>
+
+  <p class="foot">系统自动化：选股走本地接口（POST /api/screen，约8秒出结果），
+  每交易日14:45自动核查。被三道关拦下的股票都带原因，可随时复查有没有冤枉它。
+  <br>本页是规则说明，不构成投资建议，最终决定权在自己。</p>
+</div>
+
+</body>
+</html>
