@@ -2,7 +2,9 @@
 
 import pandas as pd
 
-from app.strategy.sector_quality import stats_from_close, annotate_and_filter
+from app.strategy.sector_quality import (
+    stats_from_close, annotate_and_filter, market_breadth, apply_breadth_gate,
+)
 
 
 def _px():
@@ -105,3 +107,57 @@ def test_disp_pct_override():
     kept, _ = annotate_and_filter(
         results, params={"sector_disp_pct": 1.0}, stats=stats, imap=imap)
     assert len(kept) == 1
+
+
+# ── 市场广度门限 ──────────────────────────────────────────
+
+def _snap(pct_values):
+    """构造行情快照: n 只股票, pct_values 为各自的涨跌幅"""
+    return pd.DataFrame({
+        "code": [f"6{i:05d}" for i in range(len(pct_values))],
+        "pct_change": pct_values,
+    })
+
+
+def test_market_breadth_calc():
+    """广度 = 上涨占比"""
+    vals = [1.0] * 600 + [-1.0] * 400            # 1500 只, 60% 上涨
+    assert abs(market_breadth(_snap(vals)) - 60.0) < 1e-6
+
+
+def test_market_breadth_insufficient_sample():
+    """样本太少返回 None(不因数据缺口误拦)"""
+    assert market_breadth(_snap([1.0] * 10)) is None
+    assert market_breadth(pd.DataFrame()) is None
+
+
+def test_breadth_gate_blocks_weak_market():
+    """广度低于门限: 全部拦截并带原因"""
+    snap = _snap([1.0] * 300 + [-1.0] * 700)     # 广度 30%
+    results = [{"code": "600001", "name": "A", "score": 98}]
+    kept, blocked, b = apply_breadth_gate(results, snap, {})
+    assert kept == [] and len(blocked) == 1
+    assert b == 30.0
+    assert "退潮期" in blocked[0]["breadth_reason"]
+    assert blocked[0]["market_breadth"] == 30.0
+
+
+def test_breadth_gate_passes_healthy_market():
+    """广度达标: 放行"""
+    snap = _snap([1.0] * 600 + [-1.0] * 400)     # 广度 60%
+    results = [{"code": "600001", "name": "A", "score": 98}]
+    kept, blocked, b = apply_breadth_gate(results, snap, {})
+    assert len(kept) == 1 and blocked == []
+    assert kept[0]["market_breadth"] == 60.0
+
+
+def test_breadth_gate_disabled_or_invalid():
+    """gate<=0 关闭; 广度不可信(None)不拦截"""
+    snap = _snap([1.0] * 300 + [-1.0] * 700)
+    results = [{"code": "600001", "name": "A", "score": 98}]
+    kept, blocked, _ = apply_breadth_gate(
+        list(results), snap, {"breadth_gate": 0})
+    assert len(kept) == 1 and blocked == []
+    bad = _snap([1.0] * 5)                        # 样本不足 → None
+    kept, blocked, b = apply_breadth_gate(list(results), bad, {})
+    assert len(kept) == 1 and blocked == [] and b is None

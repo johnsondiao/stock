@@ -71,6 +71,11 @@
   板块 5 日中位涨幅>0 且 板块内离散度排进最齐前 30% 才放行(实证: 齐涨组真主线率
   43% vs 散组 18%); 被过滤的带原因存于返回值 `sector_filtered_out`;
   params 可调 `sector_filter/sector_disp_pct/sector_require_rising`; 映射缺失不误杀
+- **市场广度门限 (2026-09-14 接入)**: 选股先过 `apply_breadth_gate()` ——
+  行情快照上涨占比 <50% 时拦截全部新买入信号(实证 breadth_gate_backtest.py,
+  19765 笔: 弱势组均收益 -0.7%/深亏率 16~17%, 强势组 +0.1%/11~12%);
+  拦截列表存于 `breadth_filtered_out`, 当前广度在 `market_breadth`;
+  params 可调 `breadth_gate`(默认50, 0=关); 快照样本<1000 不拦(不误杀)
 - ma_combo 严格回测(ma_combo_backtest.py): 13天窗口小幅跑赢等权基准(+0.47%/笔)
   但样本不足; 均线系统本身 alpha 有限, 板块过滤是当前主要增强方向
 - 持仓纪律: 收盘跌破日线 MA12 减仓/清仓, MA60 为最后防线

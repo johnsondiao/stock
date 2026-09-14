@@ -97,6 +97,19 @@ def run_screen(strategy_name: str, params: dict,
                 import time
                 time.sleep(settings.scan_batch_pause)
 
+    # Step 3.4: 市场广度门限(退潮期禁开新仓, 被拦截的带原因保留)
+    breadth_blocked: list[dict] = []
+    market_b: float | None = None
+    try:
+        from app.strategy.sector_quality import apply_breadth_gate
+        results, breadth_blocked, market_b = apply_breadth_gate(
+            results, snapshot, params)
+        if breadth_blocked:
+            logger.info("[%s] 广度门限拦截: 广度 %.1f%%, 拦截 %d 只",
+                        task_id, market_b or -1, len(breadth_blocked))
+    except Exception as e:
+        logger.warning("[%s] 广度门限失败(不影响选股): %s", task_id, e)
+
     # Step 3.5: 板块成色过滤(板块在涨且齐涨才放行, 被过滤的带原因保留)
     sector_dropped: list[dict] = []
     try:
@@ -121,6 +134,8 @@ def run_screen(strategy_name: str, params: dict,
         "errors": errors,
         "results": results,
         "sector_filtered_out": sector_dropped,
+        "breadth_filtered_out": breadth_blocked,
+        "market_breadth": market_b,
         "completed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
 

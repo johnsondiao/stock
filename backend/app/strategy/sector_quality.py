@@ -34,6 +34,13 @@ MIN_SECTOR_MEMBERS = 5
 MIN_FULL_COVERAGE = 2000      # 当日日线覆盖低于此数视为不完整, 不用
 LOOKBACK_DAYS = 5             # 计算 5 日涨幅
 
+# ── 市场广度门限 (breadth_gate_backtest.py 实证, 2025-06~2026-09, 19765 笔) ──
+# 买入日广度 <50%: 平均 -0.68~-0.75%, 亏超5%占 16~17%
+# 买入日广度 >=50%: 平均 +0.08~+0.19%, 亏超5%占 11~12%
+# 门限>=50% 拦下的 7997 笔平均 -0.72% —— 退潮期禁止新开仓
+DEFAULT_BREADTH_GATE = 50.0
+MIN_BREADTH_SAMPLE = 1000     # 快照样本低于此数, 广度不可信, 不拦截
+
 # ── 行业映射缓存 ──────────────────────────────────────────
 _map_lock = threading.Lock()
 _map_cache: dict | None = None
@@ -131,6 +138,46 @@ def compute_sector_stats() -> pd.DataFrame | None:
     px = df.pivot_table(index="d", columns="code",
                         values="close", aggfunc="last").sort_index()
     return stats_from_close(px, load_industry_map())
+
+
+# ── 市场广度门限 ─────────────────────────────────────────
+
+def market_breadth(snapshot: pd.DataFrame) -> float | None:
+    """行情快照的上涨个股占比%(市场广度); 快照无效/样本不足返回 None"""
+    if snapshot is None or snapshot.empty or "pct_change" not in snapshot.columns:
+        return None
+    s = pd.to_numeric(snapshot["pct_change"], errors="coerce").dropna()
+    if len(s) < MIN_BREADTH_SAMPLE:
+        return None
+    return float((s > 0).mean() * 100)
+
+
+def apply_breadth_gate(results: list[dict], snapshot: pd.DataFrame,
+                       params: dict | None = None
+                       ) -> tuple[list[dict], list[dict], float | None]:
+    """
+    市场广度门限: 广度低于阈值时拦截全部新买入信号(退潮期禁开仓)。
+
+    params: breadth_gate 阈值%(默认 50, <=0 表示关闭)
+    :return: (保留结果, 被拦截结果[带 breadth_reason], 当前广度)
+    """
+    p = params or {}
+    gate = float(p.get("breadth_gate", DEFAULT_BREADTH_GATE))
+    b = market_breadth(snapshot)
+    if not results:
+        return results, [], b
+    if b is not None:
+        for it in results:
+            it["market_breadth"] = round(b, 1)
+    if gate <= 0 or b is None:
+        # 关闭或广度不可信: 不拦截(不因数据缺口误杀)
+        return results, [], b
+    if b >= gate:
+        return results, [], b
+    for it in results:
+        it["breadth_reason"] = f"市场广度{b:.0f}%<{gate:.0f}%,退潮期禁开新仓"
+    logger.info("广度门限拦截: 广度 %.1f%% < %.1f%%, 拦截 %d 只", b, gate, len(results))
+    return [], list(results), b
 
 
 # ── 标注 + 过滤 ──────────────────────────────────────────
